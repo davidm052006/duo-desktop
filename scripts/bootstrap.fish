@@ -1,7 +1,9 @@
 #!/usr/bin/env fish
 # Crea los dos proyectos la primera vez. Idempotente: si ya existen, no toca.
 
-set -l raiz (dirname (dirname (status filename)))
+# Absoluta: si se resuelve relativa, los `cd` posteriores crean los proyectos
+# en el sitio equivocado (flutter create acabó dentro de service/).
+set -l raiz (realpath (dirname (dirname (status filename))))
 cd $raiz
 
 function paso; set_color cyan; echo ""; echo "── $argv"; set_color normal; end
@@ -25,35 +27,49 @@ if test $falta -eq 1
 end
 
 paso "Servicio C#"
-if test -d service
+if test -d $raiz/service
     ok "service/ ya existe"
 else
-    dotnet new web -o service -n DuoDesktop.Service --no-https || exit 1
-    cd service
-    dotnet add package Octokit >/dev/null
-    dotnet add package LibGit2Sharp >/dev/null
-    cd $raiz
-    ok "service/ creado con Octokit y LibGit2Sharp"
+    dotnet new web -o $raiz/service -n DuoDesktop.Service --no-https || exit 1
+    ok "service/ creado"
+end
+for pkg in Octokit LibGit2Sharp
+    if not grep -q "\"$pkg\"" $raiz/service/DuoDesktop.Service.csproj 2>/dev/null
+        dotnet add $raiz/service package $pkg >/dev/null 2>&1; and ok "$pkg añadido"; or mal "no pude añadir $pkg"
+    else
+        ok "$pkg ya estaba"
+    end
 end
 
 paso "App Flutter"
-if test -d app
+flutter config --enable-linux-desktop >/dev/null 2>&1
+if test -f $raiz/app/pubspec.yaml
     ok "app/ ya existe"
 else
-    flutter config --enable-linux-desktop >/dev/null 2>&1
-    flutter create --platforms=linux --project-name duo_desktop app || exit 1
-    cd app
-    for p in http web_socket_channel provider
-        flutter pub add $p >/dev/null 2>&1
+    flutter create --platforms=linux --project-name duo_desktop $raiz/app || exit 1
+    ok "app/ creada"
+end
+for p in http web_socket_channel provider
+    if not grep -q "^  $p:" $raiz/app/pubspec.yaml 2>/dev/null
+        fish -c "cd $raiz/app; and flutter pub add $p" >/dev/null 2>&1
+        and ok "$p añadido"; or mal "no pude añadir $p"
+    else
+        ok "$p ya estaba"
     end
-    cd $raiz
-    ok "app/ creada con http, web_socket_channel y provider"
 end
 
 paso "Compilando para verificar"
-cd service; and dotnet build -v q >/dev/null; and ok "servicio compila"; or mal "el servicio no compila"
-cd $raiz/app; and flutter build linux --debug >/dev/null 2>&1; and ok "app compila"; or mal "la app no compila (mira: flutter doctor)"
-cd $raiz
+if dotnet build $raiz/service -v q >/dev/null 2>&1
+    ok "el servicio compila"
+else
+    mal "el servicio no compila:"
+    dotnet build $raiz/service -v q 2>&1 | grep -iE 'error' | head -3 | sed 's/^/      /'
+end
+if fish -c "cd $raiz/app; and flutter build linux --debug" >/dev/null 2>&1
+    ok "la app compila"
+else
+    mal "la app no compila (prueba: cd app; flutter build linux --debug)"
+end
 
 echo ""
 set_color green --bold; echo "  Listo. Levanta todo con: scripts/dev.fish"; set_color normal
