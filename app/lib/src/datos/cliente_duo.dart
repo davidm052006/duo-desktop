@@ -129,6 +129,48 @@ class ClienteDuo {
     );
   }
 
+  Future<void> publicarRama(String tareaId) =>
+      _postGitHub('/github/push', tareaId);
+
+  Future<void> abrirPullRequest(String tareaId) =>
+      _postGitHub('/github/pr', tareaId);
+
+  Future<void> _postGitHub(String ruta, String tareaId) async {
+    final http.Response respuesta;
+    try {
+      respuesta = await _http
+          .post(
+            _config.ruta(ruta),
+            headers: {
+              ..._cabeceras,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'taskId': tareaId}),
+          )
+          .timeout(_espera);
+    } on TimeoutException {
+      throw FalloDuo.sinServicio;
+    } on SocketException {
+      throw FalloDuo.sinServicio;
+    } on http.ClientException {
+      throw FalloDuo.sinServicio;
+    }
+
+    if (respuesta.statusCode >= 200 && respuesta.statusCode < 300) {
+      return;
+    }
+
+    final cuerpo = _decodifica(respuesta.body);
+    final error = cuerpo?['error'] as Map<String, dynamic>?;
+    throw FalloDuo(
+      error?['code'] as String? ?? 'http_${respuesta.statusCode}',
+      error?['message'] as String? ??
+          (respuesta.body.trim().isNotEmpty
+              ? respuesta.body.trim()
+              : 'El servicio respondió ${respuesta.statusCode}.'),
+    );
+  }
+
   Map<String, dynamic>? _decodifica(String cuerpo) {
     try {
       return jsonDecode(cuerpo) as Map<String, dynamic>;
