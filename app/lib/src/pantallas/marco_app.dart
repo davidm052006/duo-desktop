@@ -4,8 +4,17 @@ import 'package:provider/provider.dart';
 import '../estado/estado_tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
+import 'pantalla_agentes.dart';
+import 'pantalla_configuracion.dart';
+import 'pantalla_github.dart';
+import 'pantalla_historial.dart';
 import 'pantalla_inicio.dart';
+import 'pantalla_personalizacion.dart';
+import 'pantalla_preguntas.dart';
 import 'pantalla_tablero.dart';
+import 'pantalla_tareas.dart';
+import 'pantalla_terminal.dart';
+import 'pantalla_visualizaciones.dart';
 
 /// Un sitio al que ir desde la barra lateral.
 ///
@@ -70,8 +79,19 @@ class _MarcoAppState extends State<MarcoApp> {
                 ),
                 VerticalDivider(width: 1, color: context.paleta.rejilla),
                 Expanded(
+                  // Cada sección vive en su propio archivo: así varios agentes
+                  // pueden trabajar a la vez sin pisarse en este switch.
                   child: switch (destinosTrabajo[_activo].nombre) {
                     'Tablero' => const PantallaTablero(),
+                    'Tareas' => const PantallaTareas(),
+                    'Agentes' => const PantallaAgentes(),
+                    'Preguntas' => const PantallaPreguntas(),
+                    'Terminal' => const PantallaTerminal(),
+                    'GitHub' => const PantallaGitHub(),
+                    'Historial' => const PantallaHistorial(),
+                    'Visualizaciones' => const PantallaVisualizaciones(),
+                    'Personalización' => const PantallaPersonalizacion(),
+                    'Configuración' => const PantallaConfiguracion(),
                     _ => const PantallaInicio(),
                   },
                 ),
