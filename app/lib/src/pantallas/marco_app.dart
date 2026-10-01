@@ -42,7 +42,7 @@ const destinosTrabajo = [
   Destino('Terminal', Icons.code),
   Destino('GitHub', Icons.commit_outlined),
   Destino('Historial', Icons.history),
-  Destino('Visualizaciones', Icons.show_chart, fase: 6),
+  Destino('Visualizaciones', Icons.show_chart),
 ];
 
 const destinosPreferencias = [

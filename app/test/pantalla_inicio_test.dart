@@ -123,14 +123,14 @@ void main() {
     expect(find.text('Fase 3'), findsWidgets);
   });
 
-  testWidgets('un destino sin construir no se puede abrir', (tester) async {
+  testWidgets('todos los destinos del menú se pueden abrir', (tester) async {
     await _pinta(tester, await _estadoCon(_json));
 
-    // Visualizaciones llega en la fase 6: sigue siendo el ejemplo de destino
-    // que todavía no se puede abrir. (Historial ya existe desde T-008.)
-    await tester.tap(find.text('Visualizaciones'));
-    await tester.pump();
-    expect(find.text('Centro de control'), findsOneWidget);
+    // Ya no queda ninguna sección por construir: si alguien añade un destino
+    // nuevo sin su pantalla, este test lo caza.
+    for (final d in [...destinosTrabajo, ...destinosPreferencias]) {
+      expect(d.listo, isTrue, reason: '${d.nombre} sigue marcado con fase');
+    }
   });
 
   testWidgets('el Tablero sigue siendo navegable desde la barra lateral', (tester) async {
