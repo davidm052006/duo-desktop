@@ -64,7 +64,6 @@ class PantallaTerminal extends StatelessWidget {
               border: Border.all(color: paleta.rejilla),
             ),
             child: Scrollbar(
-              thumbVisibility: true,
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: _lineas.length,
