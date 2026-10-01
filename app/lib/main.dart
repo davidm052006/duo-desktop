@@ -24,7 +24,8 @@ class AppDuo extends StatelessWidget {
         darkTheme: TemaDuo.oscuro(),
         // El modo oscuro no es un reflejo del claro: tiene sus propios pasos de
         // color, validados contra la superficie oscura.
-        themeMode: ThemeMode.system,
+        // El tablero de referencia está diseñado para el tema oscuro.
+        themeMode: ThemeMode.dark,
         home: const PantallaTablero(),
       ),
     );

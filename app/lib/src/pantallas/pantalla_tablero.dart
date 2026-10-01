@@ -6,9 +6,9 @@ import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/carga_agentes.dart';
 import '../widgets/panel_fallo.dart';
-import '../widgets/tabla_tareas.dart';
+import '../widgets/tablero_kanban.dart';
 
-/// El tablero. Fase 1: solo lectura, igual que el endpoint que lo alimenta.
+/// El tablero Kanban de solo lectura, alimentado por el endpoint existente.
 class PantallaTablero extends StatelessWidget {
   const PantallaTablero({super.key});
 
@@ -41,7 +41,10 @@ class PantallaTablero extends StatelessWidget {
         ),
         Fase.fallo => Padding(
           padding: const EdgeInsets.all(24),
-          child: PanelFallo(fallo: estado.fallo!, alReintentar: estado.refresca),
+          child: PanelFallo(
+            fallo: estado.fallo!,
+            alReintentar: estado.refresca,
+          ),
         ),
         Fase.listo => _Contenido(tablero: estado.tablero!),
       },
@@ -57,19 +60,11 @@ class _Titulo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textos = Theme.of(context).textTheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text('Tablero', style: textos.headlineSmall),
-        if (proyecto != null) ...[
-          const SizedBox(width: 10),
-          Text(
-            proyecto!.nombre,
-            style: textos.bodySmall?.copyWith(fontFamily: 'monospace'),
-          ),
-        ],
-      ],
+    return Text(
+      proyecto == null ? 'Tablero' : 'Tablero · ${proyecto!.nombre}',
+      style: textos.headlineSmall,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }
@@ -109,7 +104,8 @@ class _Reloj extends StatelessWidget {
   Widget build(BuildContext context) {
     if (momento == null) return const SizedBox.shrink();
     final h = momento!;
-    final texto = '${h.hour.toString().padLeft(2, '0')}:'
+    final texto =
+        '${h.hour.toString().padLeft(2, '0')}:'
         '${h.minute.toString().padLeft(2, '0')}:'
         '${h.second.toString().padLeft(2, '0')}';
     return Text(
@@ -129,29 +125,57 @@ class _Contenido extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-      children: [
-        _Seccion(
-          titulo: 'Tareas',
-          sufijo: '${tablero.tareas.length}',
-          hijo: TablaTareas(tareas: tablero.tareas),
-        ),
-        const SizedBox(height: 32),
-        _Seccion(
-          titulo: 'Carga acumulada',
-          hijo: CargaAgentes(
-            agentes: tablero.agentes,
-            maximo: tablero.puntosMaximos,
+    return LayoutBuilder(
+      builder: (context, limites) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          _AvisoLectura(),
+          const SizedBox(height: 12),
+          _Seccion(
+            titulo: 'Tablero',
+            sufijo: '${tablero.tareas.length}',
+            hijo: SizedBox(
+              // El Kanban conserva una altura útil tanto en ventanas pequeñas
+              // como en escritorios altos, sin empujar el resto fuera de vista.
+              height: (limites.maxHeight * .52).clamp(300.0, 540.0).toDouble(),
+              child: TableroKanban(tareas: tablero.tareas),
+            ),
           ),
-        ),
-        if (tablero.proyecto != null) ...[
-          const SizedBox(height: 32),
-          _Procedencia(proyecto: tablero.proyecto!),
+          const SizedBox(height: 24),
+          _Seccion(
+            titulo: 'Carga acumulada',
+            hijo: CargaAgentes(
+              agentes: tablero.agentes,
+              maximo: tablero.puntosMaximos,
+            ),
+          ),
+          if (tablero.proyecto != null) ...[
+            const SizedBox(height: 24),
+            _Procedencia(proyecto: tablero.proyecto!),
+          ],
         ],
-      ],
+      ),
     );
   }
+}
+
+class _AvisoLectura extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    decoration: BoxDecoration(
+      color: context.paleta.panel,
+      border: Border(
+        left: BorderSide(color: context.paleta.acentoAlt, width: 3),
+      ),
+    ),
+    child: Text(
+      'Modo inspección · datos leídos de .team/BOARD.md',
+      style: Theme.of(context).textTheme.bodySmall,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    ),
+  );
 }
 
 class _Seccion extends StatelessWidget {
@@ -169,7 +193,10 @@ class _Seccion extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(titulo.toUpperCase(), style: Theme.of(context).textTheme.labelSmall),
+            Text(
+              titulo.toUpperCase(),
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
             if (sufijo != null) ...[
               const SizedBox(width: 8),
               Text(sufijo!, style: Theme.of(context).textTheme.labelSmall),
@@ -203,7 +230,8 @@ class _Procedencia extends StatelessWidget {
       children: [
         Text('PIZARRA', style: Theme.of(context).textTheme.labelSmall),
         const SizedBox(height: 6),
-        if (proyecto.repo.isNotEmpty) Text('repo    ${proyecto.repo}', style: estilo),
+        if (proyecto.repo.isNotEmpty)
+          Text('repo    ${proyecto.repo}', style: estilo),
         if (proyecto.pizarra.isNotEmpty)
           Text('.team   ${proyecto.pizarra}/.team', style: estilo),
       ],
