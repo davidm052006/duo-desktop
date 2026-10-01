@@ -2,6 +2,7 @@
 
 | Tarea | Título | Dueño | Rama | Estado | Abierta |
 |-------|--------|-------|------|--------|---------|
+| T-008 | implementa las vistas Preguntas e Historial en Flutter siguiendo el estilo de pantalla_inicio.dart y los mockups de docs/diseño/. Preguntas: lista las tareas en estado esperando con su pregunta y un boton para responder (que por ahora solo muestra el comando duo ask). Historial: linea de tiempo de tareas por fecha con su agente y estado. Usa los datos que ya devuelve el servicio en /board, y estado vacio honesto donde no haya datos. Añade tests de widget como los que ya existen. | `codex` | `codex/t-008-implementa-las-vistas-preguntas-e-histor` | abierta | 2026-10-01 |
 | T-007 | continua con la fase dos. En docs/diseño/ implementa los diseños tablero kaban y tablero kaban 2. | `codex` | `codex/t-007-continua-con-la-fase-dos-en-docs-diseno-` | integrada | 2026-10-01 |
 | T-006 | empezaremos la fase dos diseñar el sistema, revisa la carpeta docs/diseño/ lee ek reame y crea la primera vista inicio centro de control, para verla en el local de flutter | `cc` | `cc/t-006-empezaremos-la-fase-dos-disenar-el-siste` | integrada | 2026-09-30 |
 | T-005 | quiero un informe del avance actual que nos faltaria para continuar con la creacion de duo-desktop, luego quiero que se inicie la creacion del sistema en fluter integrando las capacidades actuales de duo, revisen la documentacion sobre que espero que sea duo-desktop+ | `cc` | `cc/t-005-quiero-un-informe-del-avance-actual-que-` | integrada | 2026-09-30 |
