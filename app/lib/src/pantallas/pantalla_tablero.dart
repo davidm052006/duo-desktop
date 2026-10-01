@@ -6,9 +6,9 @@ import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/carga_agentes.dart';
 import '../widgets/panel_fallo.dart';
-import '../widgets/tabla_tareas.dart';
+import '../widgets/tablero_kanban.dart';
 
-/// El tablero. Fase 1: solo lectura, igual que el endpoint que lo alimenta.
+/// El tablero. Fase 2: Kanban de solo lectura sobre el endpoint existente.
 class PantallaTablero extends StatelessWidget {
   const PantallaTablero({super.key});
 
@@ -41,7 +41,10 @@ class PantallaTablero extends StatelessWidget {
         ),
         Fase.fallo => Padding(
           padding: const EdgeInsets.all(24),
-          child: PanelFallo(fallo: estado.fallo!, alReintentar: estado.refresca),
+          child: PanelFallo(
+            fallo: estado.fallo!,
+            alReintentar: estado.refresca,
+          ),
         ),
         Fase.listo => _Contenido(tablero: estado.tablero!),
       },
@@ -109,7 +112,8 @@ class _Reloj extends StatelessWidget {
   Widget build(BuildContext context) {
     if (momento == null) return const SizedBox.shrink();
     final h = momento!;
-    final texto = '${h.hour.toString().padLeft(2, '0')}:'
+    final texto =
+        '${h.hour.toString().padLeft(2, '0')}:'
         '${h.minute.toString().padLeft(2, '0')}:'
         '${h.second.toString().padLeft(2, '0')}';
     return Text(
@@ -129,29 +133,44 @@ class _Contenido extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-      children: [
-        _Seccion(
-          titulo: 'Tareas',
-          sufijo: '${tablero.tareas.length}',
-          hijo: TablaTareas(tareas: tablero.tareas),
-        ),
-        const SizedBox(height: 32),
-        _Seccion(
-          titulo: 'Carga acumulada',
-          hijo: CargaAgentes(
-            agentes: tablero.agentes,
-            maximo: tablero.puntosMaximos,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AvisoFaseUno(),
+          const SizedBox(height: 14),
+          Expanded(child: TableroKanban(tareas: tablero.tareas)),
+          const SizedBox(height: 20),
+          _Seccion(
+            titulo: 'Carga acumulada',
+            hijo: CargaAgentes(
+              agentes: tablero.agentes,
+              maximo: tablero.puntosMaximos,
+            ),
           ),
-        ),
-        if (tablero.proyecto != null) ...[
-          const SizedBox(height: 32),
-          _Procedencia(proyecto: tablero.proyecto!),
+          if (tablero.proyecto != null) ...[
+            const SizedBox(height: 18),
+            _Procedencia(proyecto: tablero.proyecto!),
+          ],
         ],
-      ],
+      ),
     );
   }
+}
+
+class _AvisoFaseUno extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    color: Theme.of(
+      context,
+    ).colorScheme.surfaceContainerHighest.withValues(alpha: .45),
+    child: Text(
+      'Modo inspección: los datos se leen de .team/BOARD.md. Arrastrar tarjetas y ejecutar acciones llegará en Fase 2.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+  );
 }
 
 class _Seccion extends StatelessWidget {
@@ -169,7 +188,10 @@ class _Seccion extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(titulo.toUpperCase(), style: Theme.of(context).textTheme.labelSmall),
+            Text(
+              titulo.toUpperCase(),
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
             if (sufijo != null) ...[
               const SizedBox(width: 8),
               Text(sufijo!, style: Theme.of(context).textTheme.labelSmall),
@@ -203,7 +225,8 @@ class _Procedencia extends StatelessWidget {
       children: [
         Text('PIZARRA', style: Theme.of(context).textTheme.labelSmall),
         const SizedBox(height: 6),
-        if (proyecto.repo.isNotEmpty) Text('repo    ${proyecto.repo}', style: estilo),
+        if (proyecto.repo.isNotEmpty)
+          Text('repo    ${proyecto.repo}', style: estilo),
         if (proyecto.pizarra.isNotEmpty)
           Text('.team   ${proyecto.pizarra}/.team', style: estilo),
       ],
