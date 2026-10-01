@@ -584,8 +584,59 @@ class _FichaAgente extends StatelessWidget {
               ),
             ],
           ],
+          const SizedBox(height: 12),
+          _Acciones(estado: agente.estado),
         ],
       ),
+    );
+  }
+}
+
+/// Lo que se podrá hacer con el agente, según en qué esté.
+///
+/// Van apagadas y con su fase escrita: el diseño pide enseñar a dónde va la app
+/// en vez de esconder lo que falta, y un botón que no hace nada sin avisar es
+/// peor que un botón apagado que lo dice.
+class _Acciones extends StatelessWidget {
+  const _Acciones({required this.estado});
+
+  final EstadoAgente estado;
+
+  static const _porEstado = {
+    EstadoAgente.trabajando: [
+      ('Ver terminal', Icons.terminal, 5),
+      ('Pausar', Icons.pause, 2),
+    ],
+    EstadoAgente.esperandoDecision: [
+      ('Ver pregunta', Icons.help_outline, 3),
+      ('Reanudar', Icons.play_arrow, 3),
+    ],
+    EstadoAgente.entregado: [
+      ('Ver cambios', Icons.difference_outlined, 4),
+      ('Integrar', Icons.merge, 2),
+    ],
+    EstadoAgente.disponible: [
+      ('Asignar tarea', Icons.assignment_outlined, 2),
+    ],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        for (final (nombre, icono, fase) in _porEstado[estado]!) ...[
+          const SizedBox(width: 8),
+          Tooltip(
+            message: '$nombre llega en la Fase $fase.',
+            child: OutlinedButton.icon(
+              onPressed: null,
+              icon: Icon(icono, size: 15),
+              label: Text('$nombre · Fase $fase'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
