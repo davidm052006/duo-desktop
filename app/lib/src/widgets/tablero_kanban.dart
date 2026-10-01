@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
 
-/// Vista de Fase 2 del tablero: organiza la misma fuente de verdad de la tabla
-/// de Fase 1 en columnas y permite inspeccionar una tarea, sin editarla.
+/// Vista Kanban de solo lectura sobre GET /board.
+///
+/// Al seleccionar una tarjeta, el inspector se mantiene dentro de la misma
+/// pantalla en un panel lateral. El tablero conserva anchura legible y usa
+/// desplazamiento horizontal cuando no cabe.
 class TableroKanban extends StatefulWidget {
   const TableroKanban({super.key, required this.tareas});
 
@@ -18,30 +21,45 @@ class _TableroKanbanState extends State<TableroKanban> {
   Tarea? _seleccionada;
 
   @override
+  void didUpdateWidget(covariant TableroKanban oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final seleccionada = _seleccionada;
+    if (seleccionada == null) return;
+
+    final indice = widget.tareas.indexWhere((t) => t.id == seleccionada.id);
+    _seleccionada = indice < 0 ? null : widget.tareas[indice];
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (widget.tareas.isEmpty) return const _SinTareasKanban();
 
     return LayoutBuilder(
       builder: (context, limites) {
+        final inspectorVisible = _seleccionada != null;
+        final anchoInspector = inspectorVisible ? 360.0 : 0.0;
+        final huecoInspector = inspectorVisible ? 16.0 : 0.0;
+        final anchoDisponible =
+            (limites.maxWidth - anchoInspector - huecoInspector)
+                .clamp(320.0, double.infinity)
+                .toDouble();
+
         final columnas = [
           for (final definicion in _columnas)
             _ColumnaKanban(
               definicion: definicion,
               tareas: widget.tareas
                   .where((t) => definicion.incluye(t))
-                  .toList(),
+                  .toList(growable: false),
               seleccionada: _seleccionada,
-              alSeleccionar: (tarea) => _abreInspector(tarea),
+              alSeleccionar: (tarea) => setState(() => _seleccionada = tarea),
             ),
         ];
 
-        // Las tarjetas conservan una anchura de lectura; cuando el espacio no
-        // alcanza se desplaza el tablero, nunca se aplastan las columnas ni se
-        // coloca el inspector encima de una de ellas.
-        final anchoTablero = limites.maxWidth > 1192
-            ? limites.maxWidth
-            : 1192.0;
-        return Scrollbar(
+        final anchoTablero =
+            anchoDisponible > 1192 ? anchoDisponible : 1192.0;
+
+        final tablero = Scrollbar(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SizedBox(
@@ -58,17 +76,25 @@ class _TableroKanbanState extends State<TableroKanban> {
             ),
           ),
         );
+
+        if (!inspectorVisible) return tablero;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: tablero),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: anchoInspector,
+              child: _InspectorTarea(
+                tarea: _seleccionada!,
+                alCerrar: () => setState(() => _seleccionada = null),
+              ),
+            ),
+          ],
+        );
       },
     );
-  }
-
-  Future<void> _abreInspector(Tarea tarea) async {
-    setState(() => _seleccionada = tarea);
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _InspectorTarea(tarea: tarea),
-    );
-    if (mounted) setState(() => _seleccionada = null);
   }
 }
 
@@ -79,8 +105,6 @@ class _DefinicionColumna {
   final EstadoTarea estado;
   final Color Function(PaletaDatos) color;
 
-  // Un estado nuevo no desaparece del tablero: queda en espera hasta que el
-  // contrato declare su columna propia, conservando su literal en la tarjeta.
   bool incluye(Tarea tarea) =>
       tarea.estado == estado ||
       (estado == EstadoTarea.abierta &&
@@ -88,8 +112,6 @@ class _DefinicionColumna {
 }
 
 final _columnas = [
-  // El orden y la relación vienen de docs/diseño/README.md. La API aún no
-  // distingue "en curso" de "abierta", así que no se infiere actividad.
   _DefinicionColumna('EN ESPERA', EstadoTarea.entregada, (p) => p.tintaTenue),
   _DefinicionColumna('EN PROGRESO', EstadoTarea.abierta, (p) => p.series.first),
   _DefinicionColumna(
@@ -119,10 +141,12 @@ class _ColumnaKanban extends StatelessWidget {
     final color = definicion.color(paleta);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: .38),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: .38),
         border: Border.all(color: paleta.rejilla),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -158,7 +182,7 @@ class _ColumnaKanban extends StatelessWidget {
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (_, indice) => _TarjetaTarea(
                       tarea: tareas[indice],
-                      seleccionada: tareas[indice] == seleccionada,
+                      seleccionada: tareas[indice].id == seleccionada?.id,
                       alPulsar: () => alSeleccionar(tareas[indice]),
                     ),
                   ),
@@ -175,10 +199,16 @@ class _Contador extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    color: context.paleta.rejilla,
-    child: Text('$cantidad', style: Theme.of(context).textTheme.labelSmall),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: context.paleta.rejilla,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          '$cantidad',
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      );
 }
 
 class _TarjetaTarea extends StatelessWidget {
@@ -200,12 +230,26 @@ class _TarjetaTarea extends StatelessWidget {
       color: seleccionada
           ? colorAgente.withValues(alpha: .15)
           : Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(7),
       child: InkWell(
         onTap: alPulsar,
+        borderRadius: BorderRadius.circular(7),
         child: Container(
           padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: colorAgente, width: 3)),
+            border: Border(
+              left: BorderSide(color: colorAgente, width: 3),
+              top: BorderSide(
+                color: seleccionada ? colorAgente : paleta.rejilla,
+              ),
+              right: BorderSide(
+                color: seleccionada ? colorAgente : paleta.rejilla,
+              ),
+              bottom: BorderSide(
+                color: seleccionada ? colorAgente : paleta.rejilla,
+              ),
+            ),
+            borderRadius: BorderRadius.circular(7),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,9 +258,10 @@ class _TarjetaTarea extends StatelessWidget {
                 children: [
                   Text(
                     tarea.id,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: colorAgente),
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: colorAgente),
                   ),
                   const Spacer(),
                   Text(
@@ -229,7 +274,7 @@ class _TarjetaTarea extends StatelessWidget {
               Text(
                 tarea.titulo,
                 style: Theme.of(context).textTheme.titleMedium,
-                maxLines: 2,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 9),
@@ -238,9 +283,10 @@ class _TarjetaTarea extends StatelessWidget {
                   Expanded(
                     child: Text(
                       tarea.rama,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(fontFamily: 'monospace'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -261,131 +307,245 @@ class _TarjetaTarea extends StatelessWidget {
 }
 
 class _InspectorTarea extends StatelessWidget {
-  const _InspectorTarea({required this.tarea});
-  final Tarea? tarea;
+  const _InspectorTarea({
+    required this.tarea,
+    required this.alCerrar,
+  });
+
+  final Tarea tarea;
+  final VoidCallback alCerrar;
 
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
-    if (tarea == null) return const SizedBox.shrink();
-    return Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: paleta.acentoAlt.withValues(alpha: .8)),
+    final colorAgente = paleta.serieDe(tarea.dueno);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: paleta.panel,
+        border: Border.all(color: paleta.acentoAlt.withValues(alpha: .65)),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 680),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: ListView(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'INSPECTOR DE TAREA',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Cerrar inspector',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const Divider(),
-              const SizedBox(height: 14),
-              Text(
-                tarea!.id,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: paleta.serieDe(tarea!.dueno),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 8, 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.manage_search_outlined,
+                  size: 17,
+                  color: paleta.acentoAlt,
                 ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                tarea!.titulo,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 24),
-              _Dato(etiqueta: 'ESTADO ACTUAL', valor: tarea!.estadoCrudo),
-              _Dato(etiqueta: 'AGENTE ASIGNADO', valor: tarea!.dueno),
-              _Dato(etiqueta: 'RAMA GIT', valor: tarea!.rama),
-              _Dato(etiqueta: 'ABIERTA', valor: _fecha(tarea!.abierta)),
-              const SizedBox(height: 8),
-              Text(
-                'ACCIONES DE FASE (SOLO LECTURA)',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              const SizedBox(height: 8),
-              const _AccionFutura(etiqueta: 'REASIGNAR AGENTE', fase: 'Fase 2'),
-              const SizedBox(height: 8),
-              const _AccionFutura(
-                etiqueta: 'CERRAR O EDITAR TAREA',
-                fase: 'Fase 2',
-              ),
-              const SizedBox(height: 8),
-              const _AccionFutura(
-                etiqueta: 'RESPONDER PREGUNTA',
-                fase: 'Fase 3',
-              ),
-              const SizedBox(height: 8),
-              const _AccionFutura(
-                etiqueta: 'INSPECCIÓN DE DIFFS',
-                fase: 'Fase 4',
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'INSPECTOR DE TAREA',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Cerrar inspector',
+                  onPressed: alCerrar,
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            ),
           ),
-        ),
+          Divider(height: 1, color: paleta.rejilla),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+              children: [
+                Row(
+                  children: [
+                    Insignia(tarea.id, tono: colorAgente, mono: true),
+                    const SizedBox(width: 8),
+                    Insignia(tarea.estadoCrudo, tono: _tonoEstado(paleta)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  tarea.titulo,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 22),
+                _Dato(
+                  etiqueta: 'AGENTE ASIGNADO',
+                  valor: tarea.dueno,
+                  icono: Icons.smart_toy_outlined,
+                  tono: colorAgente,
+                ),
+                _Dato(
+                  etiqueta: 'RAMA GIT',
+                  valor: tarea.rama,
+                  icono: Icons.account_tree_outlined,
+                  mono: true,
+                ),
+                _Dato(
+                  etiqueta: 'ABIERTA',
+                  valor: _fecha(tarea.abierta),
+                  icono: Icons.calendar_today_outlined,
+                  mono: true,
+                ),
+                const SizedBox(height: 6),
+                _SeccionInspector(
+                  titulo: 'ARCHIVOS TOCADOS',
+                  icono: Icons.difference_outlined,
+                  hijo: tarea.archivos.isEmpty
+                      ? const _NoDisponible(
+                          'GET /board todavía no informa archivos tocados.',
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final archivo in tarea.archivos)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 7),
+                                child: Mono(
+                                  archivo,
+                                  color: paleta.tintaSecundaria,
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 18),
+                _SeccionInspector(
+                  titulo: 'DIAGNÓSTICO DEL AGENTE',
+                  icono: Icons.psychology_outlined,
+                  hijo: tarea.diagnostico == null ||
+                          tarea.diagnostico!.trim().isEmpty
+                      ? const _NoDisponible(
+                          'GET /board todavía no informa diagnóstico para esta tarea.',
+                        )
+                      : Text(
+                          tarea.diagnostico!,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  Color _tonoEstado(PaletaDatos paleta) => switch (tarea.estado) {
+        EstadoTarea.abierta => paleta.acentoAlt,
+        EstadoTarea.esperando => paleta.aviso,
+        EstadoTarea.entregada => paleta.tintaSecundaria,
+        EstadoTarea.integrada => paleta.bien,
+        EstadoTarea.desconocido => paleta.tintaTenue,
+      };
+
   static String _fecha(DateTime fecha) =>
-      '${fecha.year.toString().padLeft(4, '0')}-${fecha.month.toString().padLeft(2, '0')}-${fecha.day.toString().padLeft(2, '0')}';
+      '${fecha.year.toString().padLeft(4, '0')}-'
+      '${fecha.month.toString().padLeft(2, '0')}-'
+      '${fecha.day.toString().padLeft(2, '0')}';
 }
 
 class _Dato extends StatelessWidget {
-  const _Dato({required this.etiqueta, required this.valor});
+  const _Dato({
+    required this.etiqueta,
+    required this.valor,
+    required this.icono,
+    this.tono,
+    this.mono = false,
+  });
+
   final String etiqueta;
   final String valor;
+  final IconData icono;
+  final Color? tono;
+  final bool mono;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(etiqueta, style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(height: 4),
-        Text(
-          valor,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icono, size: 16, color: tono ?? paleta.acentoAlt),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(etiqueta, style: Theme.of(context).textTheme.labelSmall),
+                const SizedBox(height: 4),
+                Text(
+                  valor,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: paleta.tintaSecundaria,
+                        fontFamily: mono ? 'monospace' : null,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _AccionFutura extends StatelessWidget {
-  const _AccionFutura({required this.etiqueta, required this.fase});
-  final String etiqueta;
-  final String fase;
+class _SeccionInspector extends StatelessWidget {
+  const _SeccionInspector({
+    required this.titulo,
+    required this.icono,
+    required this.hijo,
+  });
+
+  final String titulo;
+  final IconData icono;
+  final Widget hijo;
 
   @override
-  Widget build(BuildContext context) => OutlinedButton(
-    onPressed: null,
-    child: Row(
-      children: [
-        Expanded(child: Text(etiqueta)),
-        Text(fase),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: paleta.superficie.withValues(alpha: .55),
+        border: Border.all(color: paleta.rejilla),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icono, size: 15, color: paleta.acentoAlt),
+              const SizedBox(width: 8),
+              Text(titulo, style: Theme.of(context).textTheme.labelSmall),
+            ],
+          ),
+          const SizedBox(height: 10),
+          hijo,
+        ],
+      ),
+    );
+  }
+}
+
+class _NoDisponible extends StatelessWidget {
+  const _NoDisponible(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        texto,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.paleta.tintaTenue,
+              fontStyle: FontStyle.italic,
+            ),
+      );
 }
 
 class _SinTareasKanban extends StatelessWidget {
@@ -393,9 +553,9 @@ class _SinTareasKanban extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Text(
-      'No hay tareas abiertas.',
-      style: Theme.of(context).textTheme.bodyMedium,
-    ),
-  );
+        child: Text(
+          'No hay tareas abiertas.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      );
 }
