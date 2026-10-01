@@ -17,6 +17,8 @@ public sealed record DuoProject(
 {
     public string BoardMd => Path.Combine(BoardDir, ".team", "BOARD.md");
     public string LedgerTsv => Path.Combine(BoardDir, ".team", "ledger.tsv");
+    public string QuestionsDir => Path.Combine(BoardDir, ".team", "preguntas");
+    public string SessionsDir => Path.Combine(BoardDir, ".team", "sesiones");
 
     /// Todos los directorios que pertenecen al proyecto: el repo, la pizarra y
     /// los worktrees de cada agente.
