@@ -55,3 +55,9 @@ public sealed record GitHubResponse(
 public sealed record ErrorBody(string Code, string Message);
 
 public sealed record ErrorResponse(ErrorBody Error);
+
+public sealed record CreateTaskRequest(string? Text);
+
+public sealed record CreateTaskResponse(string Id);
+
+public sealed record AnswerQuestionRequest(string? Text);

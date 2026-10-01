@@ -8,6 +8,7 @@ builder.Services.AddSingleton<DuoProjectLocator>();
 builder.Services.AddSingleton<BoardReader>();
 builder.Services.AddSingleton<HistoryReader>();
 builder.Services.AddSingleton<GitHubReader>();
+builder.Services.AddSingleton<DuoCommandRunner>();
 
 var app = builder.Build();
 
@@ -83,6 +84,54 @@ app.MapGet("/github", async (HttpContext ctx, GitHubReader reader, ILogger<Progr
     {
         log.LogError(e, "GET /github → 500 inesperado");
         return Error(500, "board_read_failed", "No se pudo leer GitHub del proyecto activo.");
+    }
+});
+
+app.MapPost("/tasks", async (HttpContext ctx, CreateTaskRequest? request, DuoCommandRunner runner, ILogger<Program> log) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+    if (string.IsNullOrWhiteSpace(request?.Text))
+        return Error(422, "invalid_request", "El texto de la tarea es obligatorio.");
+
+    try
+    {
+        var id = await runner.CreateTaskAsync(request.Text, ctx.RequestAborted);
+        return Results.Ok(new CreateTaskResponse(id));
+    }
+    catch (DuoCommandException e)
+    {
+        log.LogWarning("POST /tasks → {Status} {Code}: {Detail}", e.Status, e.Code, e.Detail);
+        return Error(e.Status, e.Code, e.Message);
+    }
+    catch (Exception e)
+    {
+        log.LogError(e, "POST /tasks → 500 inesperado");
+        return Error(500, "duo_command_failed", "No se pudo crear la tarea.");
+    }
+});
+
+app.MapPost("/questions/{id}/answer", async (HttpContext ctx, string id, AnswerQuestionRequest? request, DuoCommandRunner runner, ILogger<Program> log) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+    if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(request?.Text))
+        return Error(422, "invalid_request", "El identificador y el texto de la respuesta son obligatorios.");
+
+    try
+    {
+        await runner.AnswerQuestionAsync(id, request.Text, ctx.RequestAborted);
+        return Results.Ok();
+    }
+    catch (DuoCommandException e)
+    {
+        log.LogWarning("POST /questions/{Id}/answer → {Status} {Code}: {Detail}", id, e.Status, e.Code, e.Detail);
+        return Error(e.Status, e.Code, e.Message);
+    }
+    catch (Exception e)
+    {
+        log.LogError(e, "POST /questions/{Id}/answer → 500 inesperado", id);
+        return Error(500, "duo_command_failed", "No se pudo enviar la respuesta al agente.");
     }
 });
 
