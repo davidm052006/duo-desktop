@@ -24,10 +24,10 @@ class _TableroKanbanState extends State<TableroKanban> {
   void didUpdateWidget(covariant TableroKanban oldWidget) {
     super.didUpdateWidget(oldWidget);
     final seleccionada = _seleccionada;
-    if (seleccionada != null &&
-        !widget.tareas.any((t) => t.id == seleccionada.id)) {
-      _seleccionada = null;
-    }
+    if (seleccionada == null) return;
+
+    final indice = widget.tareas.indexWhere((t) => t.id == seleccionada.id);
+    _seleccionada = indice < 0 ? null : widget.tareas[indice];
   }
 
   @override
@@ -40,10 +40,9 @@ class _TableroKanbanState extends State<TableroKanban> {
         final anchoInspector = inspectorVisible ? 360.0 : 0.0;
         final huecoInspector = inspectorVisible ? 16.0 : 0.0;
         final anchoDisponible =
-            (limites.maxWidth - anchoInspector - huecoInspector).clamp(
-          320.0,
-          double.infinity,
-        );
+            (limites.maxWidth - anchoInspector - huecoInspector)
+                .clamp(320.0, double.infinity)
+                .toDouble();
 
         final columnas = [
           for (final definicion in _columnas)
