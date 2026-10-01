@@ -46,9 +46,11 @@ const destinosTrabajo = [
 ];
 
 const destinosPreferencias = [
-  Destino('Personalización', Icons.palette_outlined, fase: 7),
-  Destino('Configuración', Icons.settings_outlined, fase: 7),
+  Destino('Personalización', Icons.palette_outlined),
+  Destino('Configuración', Icons.settings_outlined),
 ];
+
+const destinos = [...destinosTrabajo, ...destinosPreferencias];
 
 /// El armazón de la app: barra de marca arriba, navegación a la izquierda y la
 /// pantalla activa ocupando el resto.
@@ -81,7 +83,7 @@ class _MarcoAppState extends State<MarcoApp> {
                 Expanded(
                   // Cada sección vive en su propio archivo: así varios agentes
                   // pueden trabajar a la vez sin pisarse en este switch.
-                  child: switch (destinosTrabajo[_activo].nombre) {
+                  child: switch (destinos[_activo].nombre) {
                     'Tablero' => const PantallaTablero(),
                     'Tareas' => const PantallaTareas(),
                     'Agentes' => const PantallaAgentes(),
@@ -208,8 +210,14 @@ class _BarraLateral extends StatelessWidget {
             ),
           const SizedBox(height: 18),
           const _Rotulo('Preferencias'),
-          for (final d in destinosPreferencias)
-            _Entrada(destino: d, activa: false, alPulsar: null),
+          for (var i = 0; i < destinosPreferencias.length; i++)
+            _Entrada(
+              destino: destinosPreferencias[i],
+              activa: activo == destinosTrabajo.length + i,
+              alPulsar: destinosPreferencias[i].listo
+                  ? () => alElegir(destinosTrabajo.length + i)
+                  : null,
+            ),
         ],
       ),
     );
