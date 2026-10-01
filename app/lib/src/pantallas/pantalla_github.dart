@@ -4,8 +4,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 
 import '../config.dart';
+import '../datos/cliente_duo.dart';
+import '../estado/estado_tablero.dart';
+import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
 
@@ -17,8 +21,12 @@ class PantallaGitHub extends StatefulWidget {
 }
 
 class _PantallaGitHubState extends State<PantallaGitHub> {
+  final _cliente = ClienteDuo();
+
   bool _cargando = true;
   String? _mensaje;
+  String? _errorAccion;
+  String? _tareaEnAccion;
   List<_Rama> _ramas = const [];
   List<_PullRequest> _prs = const [];
 
@@ -26,6 +34,12 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  @override
+  void dispose() {
+    _cliente.cierra();
+    super.dispose();
   }
 
   Future<void> _cargar() async {
@@ -57,11 +71,14 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
       }
 
       if (respuesta.statusCode != 200) {
+        final cuerpo = _json(respuesta.body);
+        final error = cuerpo?['error'] as Map<String, dynamic>?;
         setState(() {
           _cargando = false;
           _ramas = const [];
           _prs = const [];
-          _mensaje = 'El servicio respondió HTTP ${respuesta.statusCode} al consultar /github.';
+          _mensaje = error?['message'] as String? ??
+              'El servicio respondió HTTP ${respuesta.statusCode} al consultar /github.';
         });
         return;
       }
@@ -75,11 +92,17 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
       final prsRaw = json['pullRequests'] ?? json['pull_requests'] ?? json['prs'];
 
       final ramas = ramasRaw is List
-          ? ramasRaw.whereType<Map>().map((e) => _Rama.desde(Map<String, dynamic>.from(e))).toList()
+          ? ramasRaw
+              .whereType<Map>()
+              .map((e) => _Rama.desde(Map<String, dynamic>.from(e)))
+              .toList()
           : <_Rama>[];
 
       final prs = prsRaw is List
-          ? prsRaw.whereType<Map>().map((e) => _PullRequest.desde(Map<String, dynamic>.from(e))).toList()
+          ? prsRaw
+              .whereType<Map>()
+              .map((e) => _PullRequest.desde(Map<String, dynamic>.from(e)))
+              .toList()
           : <_PullRequest>[];
 
       setState(() {
@@ -87,7 +110,8 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
         _ramas = ramas;
         _prs = prs;
         if (ramas.isEmpty && prs.isEmpty) {
-          _mensaje = 'El endpoint respondió correctamente, pero no hay ramas ni pull requests para mostrar.';
+          _mensaje =
+              'El endpoint respondió correctamente, pero no hay ramas ni pull requests para mostrar.';
         }
       });
     } on TimeoutException {
@@ -97,7 +121,9 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
     } on http.ClientException {
       _fallo('No fue posible conectar con el servicio local.');
     } on FormatException catch (e) {
-      _fallo('La respuesta de GET /github no tiene el formato esperado: ${e.message}.');
+      _fallo(
+        'La respuesta de GET /github no tiene el formato esperado: ${e.message}.',
+      );
     } on Object catch (e) {
       _fallo('No fue posible leer la información de GitHub: $e');
     }
@@ -113,10 +139,111 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
     });
   }
 
+  Map<String, dynamic>? _json(String cuerpo) {
+    try {
+      final valor = jsonDecode(cuerpo);
+      return valor is Map<String, dynamic> ? valor : null;
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> _publicar(Tarea tarea) async {
+    final confirmado = await _confirmar(
+      titulo: 'Publicar rama en GitHub',
+      texto:
+          'Se publicará la rama ${tarea.rama} asociada a ${tarea.id}. Esta operación modifica el remoto de GitHub.',
+      accion: 'Publicar rama',
+    );
+    if (!confirmado || !mounted) return;
+
+    await _ejecutarAccion(
+      tarea: tarea,
+      accion: () => _cliente.publicarRama(tarea.id),
+      exito: 'Rama de ${tarea.id} publicada.',
+    );
+  }
+
+  Future<void> _abrirPr(Tarea tarea) async {
+    final confirmado = await _confirmar(
+      titulo: 'Abrir pull request',
+      texto:
+          'Se solicitará abrir el pull request de ${tarea.id} desde ${tarea.rama}. Esta operación sale a GitHub.',
+      accion: 'Abrir PR',
+    );
+    if (!confirmado || !mounted) return;
+
+    await _ejecutarAccion(
+      tarea: tarea,
+      accion: () => _cliente.abrirPullRequest(tarea.id),
+      exito: 'Pull request de ${tarea.id} solicitado.',
+    );
+  }
+
+  Future<void> _ejecutarAccion({
+    required Tarea tarea,
+    required Future<void> Function() accion,
+    required String exito,
+  }) async {
+    setState(() {
+      _tareaEnAccion = tarea.id;
+      _errorAccion = null;
+    });
+
+    try {
+      await accion();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(exito)),
+      );
+      await _cargar();
+    } on FalloDuo catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorAccion =
+            '${e.mensaje}\n\nAlternativa manual: duo pr ${tarea.id}';
+      });
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorAccion =
+            '$e\n\nAlternativa manual: duo pr ${tarea.id}';
+      });
+    } finally {
+      if (mounted) setState(() => _tareaEnAccion = null);
+    }
+  }
+
+  Future<bool> _confirmar({
+    required String titulo,
+    required String texto,
+    required String accion,
+  }) async {
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(titulo),
+        content: Text(texto),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(accion),
+          ),
+        ],
+      ),
+    );
+    return resultado ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
     final textos = Theme.of(context).textTheme;
+    final tareas = context.watch<EstadoTablero>().tablero?.tareas ?? const <Tarea>[];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 36),
@@ -133,7 +260,7 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
           children: [
             Expanded(
               child: Text(
-                'Ramas de agentes y pull requests del repositorio activo.',
+                'Ramas de agentes, pull requests y acciones explícitas sobre el remoto.',
                 style: textos.bodySmall?.copyWith(color: paleta.tintaSecundaria),
               ),
             ),
@@ -144,6 +271,10 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
             ),
           ],
         ),
+        if (_errorAccion != null) ...[
+          const SizedBox(height: 18),
+          _ErrorAccion(mensaje: _errorAccion!),
+        ],
         const SizedBox(height: 24),
         if (_cargando)
           const Center(
@@ -160,16 +291,22 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
           LayoutBuilder(
             builder: (context, caja) {
               final dosColumnas = caja.maxWidth >= 980;
-              final ramas = _PanelRamas(ramas: _ramas);
+              final ramas = _PanelRamas(
+                ramas: _ramas,
+                tareas: tareas,
+                tareaEnAccion: _tareaEnAccion,
+                alPublicar: _publicar,
+                alAbrirPr: _abrirPr,
+              );
               final prs = _PanelPrs(prs: _prs);
               if (dosColumnas) {
                 return IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: ramas),
+                      Expanded(flex: 3, child: ramas),
                       const SizedBox(width: 18),
-                      Expanded(child: prs),
+                      Expanded(flex: 2, child: prs),
                     ],
                   ),
                 );
@@ -185,6 +322,38 @@ class _PantallaGitHubState extends State<PantallaGitHub> {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _ErrorAccion extends StatelessWidget {
+  const _ErrorAccion({required this.mensaje});
+
+  final String mensaje;
+
+  @override
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: paleta.critico.withValues(alpha: .08),
+        border: Border.all(color: paleta.critico.withValues(alpha: .35)),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, size: 17, color: paleta.critico),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SelectableText(
+              mensaje,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -208,7 +377,12 @@ class _EstadoVacio extends StatelessWidget {
         children: [
           Icon(Icons.info_outline, size: 17, color: paleta.acentoAlt),
           const SizedBox(width: 10),
-          Expanded(child: Text(mensaje, style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(
+            child: Text(
+              mensaje,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         ],
       ),
     );
@@ -216,9 +390,26 @@ class _EstadoVacio extends StatelessWidget {
 }
 
 class _PanelRamas extends StatelessWidget {
-  const _PanelRamas({required this.ramas});
+  const _PanelRamas({
+    required this.ramas,
+    required this.tareas,
+    required this.tareaEnAccion,
+    required this.alPublicar,
+    required this.alAbrirPr,
+  });
 
   final List<_Rama> ramas;
+  final List<Tarea> tareas;
+  final String? tareaEnAccion;
+  final ValueChanged<Tarea> alPublicar;
+  final ValueChanged<Tarea> alAbrirPr;
+
+  Tarea? _tareaDe(_Rama rama) {
+    for (final tarea in tareas) {
+      if (tarea.rama == rama.nombre) return tarea;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -226,29 +417,116 @@ class _PanelRamas extends StatelessWidget {
     return Tarjeta(
       titulo: 'Ramas por agente',
       icono: Icons.account_tree_outlined,
-      sufijo: Text('${ramas.length}', style: Theme.of(context).textTheme.titleMedium),
+      sufijo: Text(
+        '${ramas.length}',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       hijo: ramas.isEmpty
           ? Text(
               'No hay ramas devueltas por GET /github.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: paleta.tintaTenue),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: paleta.tintaTenue),
             )
           : Column(
               children: [
-                for (final rama in ramas)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      children: [
-                        Container(width: 8, height: 8, color: paleta.serieDe(rama.agente)),
-                        const SizedBox(width: 10),
-                        SizedBox(width: 58, child: Mono(rama.agente, peso: FontWeight.w700)),
-                        const SizedBox(width: 8),
-                        Expanded(child: Mono(rama.nombre, color: paleta.tintaSecundaria)),
-                      ],
-                    ),
-                  ),
+                for (final rama in ramas) _RamaFila(
+                  rama: rama,
+                  tarea: _tareaDe(rama),
+                  ocupada: _tareaDe(rama)?.id == tareaEnAccion,
+                  alPublicar: alPublicar,
+                  alAbrirPr: alAbrirPr,
+                ),
               ],
             ),
+    );
+  }
+}
+
+class _RamaFila extends StatelessWidget {
+  const _RamaFila({
+    required this.rama,
+    required this.tarea,
+    required this.ocupada,
+    required this.alPublicar,
+    required this.alAbrirPr,
+  });
+
+  final _Rama rama;
+  final Tarea? tarea;
+  final bool ocupada;
+  final ValueChanged<Tarea> alPublicar;
+  final ValueChanged<Tarea> alAbrirPr;
+
+  @override
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: paleta.rejilla),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  color: paleta.serieDe(rama.agente),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 58,
+                  child: Mono(rama.agente, peso: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Mono(
+                    rama.nombre,
+                    color: paleta.tintaSecundaria,
+                  ),
+                ),
+                if (tarea != null)
+                  Insignia(tarea!.id, tono: paleta.acentoAlt, mono: true),
+              ],
+            ),
+            if (tarea != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: ocupada ? null : () => alPublicar(tarea!),
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+                    label: const Text('Publicar'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: ocupada ? null : () => alAbrirPr(tarea!),
+                    icon: const Icon(Icons.merge_outlined, size: 16),
+                    label: const Text('Abrir PR'),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Text(
+                'No corresponde a una tarea visible de GET /board; acciones deshabilitadas.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: paleta.tintaTenue),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -264,11 +542,17 @@ class _PanelPrs extends StatelessWidget {
     return Tarjeta(
       titulo: 'Pull requests',
       icono: Icons.merge_outlined,
-      sufijo: Text('${prs.length}', style: Theme.of(context).textTheme.titleMedium),
+      sufijo: Text(
+        '${prs.length}',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       hijo: prs.isEmpty
           ? Text(
               'No hay pull requests devueltos por GET /github.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: paleta.tintaTenue),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: paleta.tintaTenue),
             )
           : Column(
               children: [
@@ -278,20 +562,30 @@ class _PanelPrs extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Mono('#${pr.numero}', color: paleta.acentoAlt, peso: FontWeight.w700),
+                        Mono(
+                          '#${pr.numero}',
+                          color: paleta.acentoAlt,
+                          peso: FontWeight.w700,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(pr.titulo, style: Theme.of(context).textTheme.bodyMedium),
+                              Text(
+                                pr.titulo,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
                               const SizedBox(height: 4),
                               Mono(pr.rama, color: paleta.tintaTenue),
                             ],
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Insignia(pr.estado, tono: paleta.tintaSecundaria),
+                        Insignia(
+                          pr.estado,
+                          tono: paleta.tintaSecundaria,
+                        ),
                       ],
                     ),
                   ),
@@ -309,8 +603,12 @@ class _Rama {
 
   factory _Rama.desde(Map<String, dynamic> json) {
     final nombre = (json['name'] ?? json['branch'] ?? '').toString();
-    final agente = (json['agent'] ?? json['owner'] ?? _agenteDesdeRama(nombre)).toString();
-    return _Rama(nombre: nombre, agente: agente.isEmpty ? '—' : agente);
+    final agente =
+        (json['agent'] ?? json['owner'] ?? _agenteDesdeRama(nombre)).toString();
+    return _Rama(
+      nombre: nombre,
+      agente: agente.isEmpty ? '—' : agente,
+    );
   }
 
   static String _agenteDesdeRama(String rama) {
@@ -338,6 +636,7 @@ class _PullRequest {
         numero: (json['number'] ?? json['id'] ?? '?').toString(),
         titulo: (json['title'] ?? 'Pull request sin título').toString(),
         estado: (json['state'] ?? json['status'] ?? 'desconocido').toString(),
-        rama: (json['head'] ?? json['branch'] ?? json['headBranch'] ?? '').toString(),
+        rama:
+            (json['head'] ?? json['branch'] ?? json['headBranch'] ?? '').toString(),
       );
 }
