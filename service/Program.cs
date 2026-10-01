@@ -6,6 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<DuoProjectLocator>();
 builder.Services.AddSingleton<BoardReader>();
+builder.Services.AddSingleton<HistoryReader>();
+builder.Services.AddSingleton<GitHubReader>();
 
 var app = builder.Build();
 
@@ -39,6 +41,48 @@ app.MapGet("/board", (HttpContext ctx, BoardReader reader, ILogger<Program> log)
     {
         log.LogError(e, "GET /board → 500 inesperado");
         return Error(500, "board_read_failed", "No se pudo leer la pizarra del proyecto activo.");
+    }
+});
+
+app.MapGet("/history", (HttpContext ctx, HistoryReader reader, ILogger<Program> log) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(reader.Read());
+    }
+    catch (BoardException e)
+    {
+        log.LogWarning("GET /history → {Status} {Code}: {Detail}", e.Status, e.Code, e.Detail);
+        return Error(e.Status, e.Code, e.Message);
+    }
+    catch (Exception e)
+    {
+        log.LogError(e, "GET /history → 500 inesperado");
+        return Error(500, "board_read_failed", "No se pudo leer el historial del proyecto activo.");
+    }
+});
+
+app.MapGet("/github", async (HttpContext ctx, GitHubReader reader, ILogger<Program> log) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(await reader.ReadAsync(ctx.RequestAborted));
+    }
+    catch (BoardException e)
+    {
+        log.LogWarning("GET /github → {Status} {Code}: {Detail}", e.Status, e.Code, e.Detail);
+        return Error(e.Status, e.Code, e.Message);
+    }
+    catch (Exception e)
+    {
+        log.LogError(e, "GET /github → 500 inesperado");
+        return Error(500, "board_read_failed", "No se pudo leer GitHub del proyecto activo.");
     }
 });
 
