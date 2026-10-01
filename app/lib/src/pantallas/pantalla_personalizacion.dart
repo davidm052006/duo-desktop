@@ -18,6 +18,7 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   static const _fondoKey = 'personalizacion.fondo';
 
   bool _cargando = true;
+  String? _fallo;
   String _tema = 'oscuro';
   String _acento = 'rosa';
   double _escalaTexto = 1.0;
@@ -30,13 +31,32 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   }
 
   Future<void> _cargar() async {
-    final prefs = await SharedPreferences.getInstance();
+    // Si el almacén de preferencias no responde (plugin sin registrar en el
+    // escritorio, permisos del perfil), la pantalla NO puede quedarse
+    // cargando para siempre: se abre con los valores por defecto.
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('Personalización: no pude leer las preferencias ($e)');
+    }
     if (!mounted) return;
+    if (prefs == null) {
+      setState(() {
+        _cargando = false;
+        _fallo = 'No pude leer tus preferencias guardadas. '
+            'Puedes cambiarlas, pero no se recordarán al reiniciar.';
+      });
+      return;
+    }
+    final guardadas = prefs;
     setState(() {
-      _tema = prefs.getString(_temaKey) ?? 'oscuro';
-      _acento = prefs.getString(_acentoKey) ?? 'rosa';
-      _escalaTexto = (prefs.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30).toDouble();
-      _fondo = prefs.getString(_fondoKey) ?? 'ninguno';
+      _tema = guardadas.getString(_temaKey) ?? 'oscuro';
+      _acento = guardadas.getString(_acentoKey) ?? 'rosa';
+      _escalaTexto =
+          (guardadas.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30).toDouble();
+      _fondo = guardadas.getString(_fondoKey) ?? 'ninguno';
       _cargando = false;
     });
   }
@@ -80,6 +100,28 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
     return LayoutBuilder(
       builder: (context, caja) {
         final dosColumnas = caja.maxWidth >= 980;
+        // Si las preferencias no se pudieron leer, decirlo arriba en vez de
+        // fingir que todo va bien: lo que cambie aquí no sobrevivirá.
+        final aviso = _fallo == null
+            ? null
+            : Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: context.paleta.panel,
+                  border: Border(
+                    left: BorderSide(color: context.paleta.aviso, width: 3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_outlined,
+                        size: 16, color: context.paleta.aviso),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(_fallo!)),
+                  ],
+                ),
+              );
         final apariencia = _Apariencia(
           tema: _tema,
           acento: _acento,
@@ -98,6 +140,7 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
           children: [
             const _Cabecera(),
             const SizedBox(height: 24),
+            ?aviso,
             if (dosColumnas)
               IntrinsicHeight(
                 child: Row(

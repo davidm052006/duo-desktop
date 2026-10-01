@@ -37,10 +37,18 @@ class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
   }
 
   Future<void> _cargar() async {
-    final prefs = await SharedPreferences.getInstance();
+    // Nunca dejar la pantalla colgada esperando al almacén de preferencias:
+    // con los valores por defecto se puede trabajar igual.
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('Configuración: no pude leer las preferencias ($e)');
+    }
     if (!mounted) return;
-    _rutaDuo.text = prefs.getString(_rutaDuoKey) ?? '~/.local/bin/duo';
-    _rutaConfig.text = prefs.getString(_rutaConfigKey) ?? '~/.config/duo';
+    _rutaDuo.text = prefs?.getString(_rutaDuoKey) ?? '~/.local/bin/duo';
+    _rutaConfig.text = prefs?.getString(_rutaConfigKey) ?? '~/.config/duo';
     setState(() => _cargando = false);
   }
 
