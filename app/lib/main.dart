@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'src/estado/estado_tablero.dart';
-import 'src/pantallas/pantalla_tablero.dart';
+import 'src/pantallas/marco_app.dart';
 import 'src/tema/tema.dart';
 
 void main() {
@@ -24,8 +24,12 @@ class AppDuo extends StatelessWidget {
         darkTheme: TemaDuo.oscuro(),
         // El modo oscuro no es un reflejo del claro: tiene sus propios pasos de
         // color, validados contra la superficie oscura.
-        themeMode: ThemeMode.system,
-        home: const PantallaTablero(),
+        //
+        // Los diseños de `docs/diseno/` fijan el tema oscuro, así que la app
+        // arranca en oscuro pase lo que pase en el escritorio. Elegir tema es
+        // cosa de Personalización (Fase 7); el tema claro se queda listo.
+        themeMode: ThemeMode.dark,
+        home: const MarcoApp(),
       ),
     );
   }
