@@ -87,7 +87,7 @@ class ClienteDuo {
     String? alcance,
   }) async {
     final cuerpoPeticion = <String, dynamic>{
-      'description': descripcion,
+      'text': descripcion,
       if (agente != null && agente.isNotEmpty) 'agent': agente,
       if (alcance != null && alcance.isNotEmpty) 'scope': alcance,
     };
