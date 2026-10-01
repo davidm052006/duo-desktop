@@ -76,17 +76,17 @@ pizarra o worktree pertenezca el directorio actual.
 El contrato debería corregirse en este punto. No es un fallo de diseño: es que
 el detalle no se podía ver sin ejecutar nada.
 
-### 3.2 La cabecera de autenticación seguía sin decidirse
+### 3.2 La cabecera de autenticación — decidida
 
 `codex` bloqueó T-002 por esto, y con razón:
 
-- el contrato fija `Authorization: Bearer <token>` (§2);
-- `scripts/dev.fish:35` enseña `X-Duo-Token: <token>`.
+- el contrato fijaba `Authorization: Bearer <token>` (§2);
+- `scripts/dev.fish:35` enseñaba `X-Duo-Token: <token>`.
 
-**Resuelto de momento aceptando las dos** en el servicio, con comparación en
-tiempo constante. Así ni el script ni el contrato mienten y nadie queda
-bloqueado. La app Flutter manda `Bearer`, que es lo que dice el contrato.
-Elegir cuál es *la* canónica y quitar la otra sigue siendo decisión tuya.
+**Decidido por David durante esta tarea: la canónica es `Authorization: Bearer`.**
+`X-Duo-Token` está fuera del servicio y fuera de `scripts/dev.fish`. Una sola
+cabecera, comparada en tiempo constante; cualquier otra cosa es `401`. Con esto
+el motivo del rechazo de T-003 queda resuelto.
 
 ## 4. Lo que queda por fase
 
@@ -139,16 +139,20 @@ exponer, más o menos en orden de valor:
 | `duo doctor`, `duo sync` | — | Diagnóstico; buen candidato a una pestaña de ajustes. |
 | varios proyectos (`DUO_P`) | — | El servicio ya los resuelve; falta el selector en la UI. |
 
-## 6. Lo que hace falta decidir
+## 6. Decisiones tomadas en esta tarea
 
-1. **La cabecera canónica.** Hasta que se elija, T-002 sigue rechazada por
-   `codex` aunque el código ya funcione con las dos.
-2. **Quién implementa en C#.** `PROTOCOL.md` asigna la implementación a `codex`
-   y a `cc` las auditorías y lo que haya que ejecutar. Esta tarea pedía arrancar
-   el sistema, así que hice las dos mitades; si la regla se mantiene, el
-   servicio vuelve a `codex` desde la Fase 2.
-3. **Corregir el contrato** con el hallazgo de §3.1, o dejarlo como está y que
-   la corrección viva solo en el código.
+1. **La cabecera canónica es `Authorization: Bearer`.** `X-Duo-Token` queda
+   descartada y retirada del servicio y de `scripts/dev.fish`.
+2. **El reparto de `PROTOCOL.md` no cambia.** Desde la Fase 2 el servicio C#
+   vuelve a `codex`; `chat` conserva contratos, dominio y documentación. Que
+   T-005 cubriera las dos mitades fue para que la Fase 1 fuese demostrable, no
+   un cambio de territorio.
+
+### Lo que sigue sin decidir
+
+- **Corregir el contrato** con el hallazgo de §3.1 (dónde vive `.team/`), o
+  dejarlo como está y que la corrección viva solo en el código. Es trabajo de
+  `chat`, que es quien posee el documento.
 
 ## 7. Lo más corto hasta algo que se pueda enseñar
 

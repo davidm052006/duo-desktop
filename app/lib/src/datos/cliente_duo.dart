@@ -38,8 +38,8 @@ class ClienteDuo {
   static const _espera = Duration(seconds: 5);
 
   Map<String, String> get _cabeceras => {
-    // El contrato v1 fija `Authorization: Bearer`; el servicio también acepta
-    // `X-Duo-Token` por compatibilidad con scripts/dev.fish.
+    // El contrato v1 fija `Authorization: Bearer`, y es la única que el
+    // servicio acepta.
     'Authorization': 'Bearer ${_config.token}',
     'Accept': 'application/json',
   };

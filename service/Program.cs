@@ -44,15 +44,14 @@ app.MapGet("/board", (HttpContext ctx, BoardReader reader, ILogger<Program> log)
 
 app.Run();
 
-// El contrato (T-002 §2) fija `Authorization: Bearer`. `scripts/dev.fish` ya
-// enseñaba `X-Duo-Token`, y codex lo marcó como incompatibilidad en T-003.
-// Se aceptan los dos: así ni el script ni el contrato quedan mintiendo, y la
-// decisión de cuál es *el* canónico sigue siendo de David.
+// `Authorization: Bearer` es la única cabecera aceptada, como fija el contrato
+// (T-002 §2). `X-Duo-Token` fue la incompatibilidad que codex marcó en T-003;
+// está descartada, y `scripts/dev.fish` ya no la menciona.
 static bool Authorized(HttpContext ctx, string? expected)
 {
     if (string.IsNullOrWhiteSpace(expected)) return false;
 
-    var presented = Bearer(ctx) ?? ctx.Request.Headers["X-Duo-Token"].FirstOrDefault();
+    var presented = Bearer(ctx);
     if (string.IsNullOrEmpty(presented)) return false;
 
     return CryptographicOperations.FixedTimeEquals(
