@@ -39,8 +39,8 @@ const destinosTrabajo = [
   Destino('Tareas', Icons.check_circle_outline),
   Destino('Agentes', Icons.hub_outlined),
   Destino('Preguntas', Icons.help_outline),
-  Destino('Terminal', Icons.code, fase: 5),
-  Destino('GitHub', Icons.commit_outlined, fase: 4),
+  Destino('Terminal', Icons.code),
+  Destino('GitHub', Icons.commit_outlined),
   Destino('Historial', Icons.history),
   Destino('Visualizaciones', Icons.show_chart, fase: 6),
 ];
