@@ -2,6 +2,7 @@
 
 | Tarea | Título | Dueño | Rama | Estado | Abierta |
 |-------|--------|-------|------|--------|---------|
+| T-009 | termina la tarea y dejame el tablero listo | `codex` | `codex/t-009-termina-la-tarea-y-dejame-el-tablero-lis` | abierta | 2026-10-01 |
 | T-008 | la vista de el tablero kaban se ve rara al achicarla, y la card al abrir no tiene los colores de los diseños, reparalo que las partes del tablero se vean bien y completas | `chat` | `chat/t-008-la-vista-de-el-tablero-kaban-se-ve-rara-` | abierta | 2026-10-01 |
 | T-007 | continua con la fase dos. En docs/diseño/ implementa los diseños tablero kaban y tablero kaban 2. | `codex` | `codex/t-007-continua-con-la-fase-dos-en-docs-diseno-` | integrada | 2026-10-01 |
 | T-006 | empezaremos la fase dos diseñar el sistema, revisa la carpeta docs/diseño/ lee ek reame y crea la primera vista inicio centro de control, para verla en el local de flutter | `cc` | `cc/t-006-empezaremos-la-fase-dos-disenar-el-siste` | integrada | 2026-09-30 |
