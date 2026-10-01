@@ -35,7 +35,7 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
     setState(() {
       _tema = prefs.getString(_temaKey) ?? 'oscuro';
       _acento = prefs.getString(_acentoKey) ?? 'rosa';
-      _escalaTexto = (prefs.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30);
+      _escalaTexto = (prefs.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30).toDouble();
       _fondo = prefs.getString(_fondoKey) ?? 'ninguno';
       _cargando = false;
     });
