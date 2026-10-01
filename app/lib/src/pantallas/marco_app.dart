@@ -36,8 +36,8 @@ class Destino {
 const destinosTrabajo = [
   Destino('Inicio', Icons.home_outlined),
   Destino('Tablero', Icons.view_week_outlined),
-  Destino('Tareas', Icons.check_circle_outline, fase: 2),
-  Destino('Agentes', Icons.hub_outlined, fase: 2),
+  Destino('Tareas', Icons.check_circle_outline),
+  Destino('Agentes', Icons.hub_outlined),
   Destino('Preguntas', Icons.help_outline, fase: 3),
   Destino('Terminal', Icons.code, fase: 5),
   Destino('GitHub', Icons.commit_outlined, fase: 4),
