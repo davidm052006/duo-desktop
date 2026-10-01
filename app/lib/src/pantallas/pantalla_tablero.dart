@@ -174,10 +174,9 @@ class _AvisoFaseUno extends StatelessWidget {
 }
 
 class _Seccion extends StatelessWidget {
-  const _Seccion({required this.titulo, required this.hijo, this.sufijo});
+  const _Seccion({required this.titulo, required this.hijo});
 
   final String titulo;
-  final String? sufijo;
   final Widget hijo;
 
   @override
@@ -192,10 +191,6 @@ class _Seccion extends StatelessWidget {
               titulo.toUpperCase(),
               style: Theme.of(context).textTheme.labelSmall,
             ),
-            if (sufijo != null) ...[
-              const SizedBox(width: 8),
-              Text(sufijo!, style: Theme.of(context).textTheme.labelSmall),
-            ],
           ],
         ),
         const SizedBox(height: 6),
