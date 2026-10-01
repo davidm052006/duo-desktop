@@ -20,8 +20,8 @@ public sealed class HistoryReaderTests : IDisposable
         Repository.Init(repoDir);
         using (var repo = new Repository(repoDir))
         {
-            Commit(repo, "first");
-            Commit(repo, "second");
+            Commit(repo, "first", 1);
+            Commit(repo, "second", 2);
         }
         ConfigureProject(repoDir);
 
@@ -44,7 +44,7 @@ public sealed class HistoryReaderTests : IDisposable
         Repository.Init(repoDir);
         using (var repo = new Repository(repoDir))
         {
-            for (var i = 0; i < 51; i++) Commit(repo, $"commit {i}");
+            for (var i = 0; i < 51; i++) Commit(repo, $"commit {i}", i);
         }
         ConfigureProject(repoDir);
 
@@ -76,12 +76,15 @@ public sealed class HistoryReaderTests : IDisposable
         Environment.SetEnvironmentVariable("DUO_P", "test");
     }
 
-    private static void Commit(Repository repo, string message)
+    private static void Commit(Repository repo, string message, int sequence)
     {
         var path = Path.Combine(repo.Info.WorkingDirectory, "commits.txt");
         File.AppendAllText(path, message + Environment.NewLine);
         Commands.Stage(repo, "commits.txt");
-        var when = DateTimeOffset.UtcNow;
+        // LibGit2Sharp ordena los commits por la fecha de autor. Una fecha
+        // distinta por commit evita que el orden topológico empate y vuelva
+        // esta prueba no determinista en máquinas rápidas.
+        var when = DateTimeOffset.UnixEpoch.AddMinutes(sequence);
         var author = new Signature("Test", "test@example.test", when);
         repo.Commit(message, author, author);
     }
