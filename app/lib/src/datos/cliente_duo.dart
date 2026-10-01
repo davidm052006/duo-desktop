@@ -81,6 +81,54 @@ class ClienteDuo {
     }
   }
 
+  Future<void> crearTarea({
+    required String descripcion,
+    String? agente,
+    String? alcance,
+  }) async {
+    final cuerpoPeticion = <String, dynamic>{
+      'text': descripcion,
+      if (agente != null && agente.isNotEmpty) 'agent': agente,
+      if (alcance != null && alcance.isNotEmpty) 'scope': alcance,
+    };
+
+    final http.Response respuesta;
+    try {
+      respuesta = await _http
+          .post(
+            _config.ruta('/tasks'),
+            headers: {
+              ..._cabeceras,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(cuerpoPeticion),
+          )
+          .timeout(_espera);
+    } on TimeoutException {
+      throw FalloDuo.sinServicio;
+    } on SocketException {
+      throw FalloDuo.sinServicio;
+    } on http.ClientException {
+      throw FalloDuo.sinServicio;
+    }
+
+    if (respuesta.statusCode >= 200 && respuesta.statusCode < 300) {
+      return;
+    }
+
+    final cuerpo = _decodifica(respuesta.body);
+    final error = cuerpo?['error'] as Map<String, dynamic>?;
+    final mensaje = error?['message'] as String?;
+
+    throw FalloDuo(
+      error?['code'] as String? ?? 'http_${respuesta.statusCode}',
+      mensaje ??
+          (respuesta.body.trim().isNotEmpty
+              ? respuesta.body.trim()
+              : 'El servicio respondió ${respuesta.statusCode}.'),
+    );
+  }
+
   Map<String, dynamic>? _decodifica(String cuerpo) {
     try {
       return jsonDecode(cuerpo) as Map<String, dynamic>;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../datos/cliente_duo.dart';
 import '../estado/estado_tablero.dart';
 import '../modelos/resumen.dart';
 import '../modelos/tablero.dart';
@@ -162,14 +163,20 @@ class _Cabecera extends StatelessWidget {
           label: const Text('Sincronizar'),
         ),
         const SizedBox(width: 10),
-        // Crear tareas es escritura: el servicio todavía es de solo lectura.
-        Tooltip(
-          message: 'Abrir tareas desde la app llega en la Fase 2. Hoy: duo "lo que quieras"',
-          child: FilledButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Nueva tarea · Fase 2'),
-          ),
+        FilledButton.icon(
+          onPressed: () async {
+            final creada = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const _DialogNuevaTarea(),
+            );
+
+            if (creada == true && context.mounted) {
+              await estado.refresca();
+            }
+          },
+          icon: const Icon(Icons.add, size: 16),
+          label: const Text('Nueva tarea'),
         ),
       ],
     );
@@ -846,4 +853,200 @@ class _PanelMovimientos extends StatelessWidget {
 
   static String _fecha(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+
+class _DialogNuevaTarea extends StatefulWidget {
+  const _DialogNuevaTarea();
+
+  @override
+  State<_DialogNuevaTarea> createState() => _DialogNuevaTareaState();
+}
+
+class _DialogNuevaTareaState extends State<_DialogNuevaTarea> {
+  final _formulario = GlobalKey<FormState>();
+  final _descripcion = TextEditingController();
+  final _alcance = TextEditingController();
+  final _cliente = ClienteDuo();
+
+  String _agente = 'automatico';
+  bool _enviando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _descripcion.dispose();
+    _alcance.dispose();
+    _cliente.cierra();
+    super.dispose();
+  }
+
+  Future<void> _enviar() async {
+    if (!_formulario.currentState!.validate() || _enviando) return;
+
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+
+    try {
+      await _cliente.crearTarea(
+        descripcion: _descripcion.text.trim(),
+        agente: _agente == 'automatico' ? null : _agente,
+        alcance: _alcance.text.trim().isEmpty ? null : _alcance.text.trim(),
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } on FalloDuo catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.mensaje;
+        _enviando = false;
+      });
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _enviando = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    final textos = Theme.of(context).textTheme;
+
+    return AlertDialog(
+      backgroundColor: paleta.panel,
+      surfaceTintColor: Colors.transparent,
+      titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+      contentPadding: const EdgeInsets.fromLTRB(22, 18, 22, 10),
+      actionsPadding: const EdgeInsets.fromLTRB(22, 8, 22, 20),
+      title: Row(
+        children: [
+          Icon(Icons.add_task_outlined, size: 20, color: paleta.acentoAlt),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('Nueva tarea')),
+          Insignia('POST /tasks', tono: paleta.acento, mono: true),
+        ],
+      ),
+      content: SizedBox(
+        width: 560,
+        child: Form(
+          key: _formulario,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Describe lo que quieres que haga duo. El servicio decidirá la creación real de la tarea.',
+                  style: textos.bodySmall?.copyWith(color: paleta.tintaSecundaria),
+                ),
+                const SizedBox(height: 18),
+                Text('DESCRIPCIÓN', style: textos.labelSmall),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _descripcion,
+                  autofocus: true,
+                  minLines: 3,
+                  maxLines: 6,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: 'Ej. implementa la vista de actividad en tiempo real',
+                  ),
+                  validator: (valor) {
+                    if (valor == null || valor.trim().isEmpty) {
+                      return 'La descripción es obligatoria.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 18),
+                Text('AGENTE', style: textos.labelSmall),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _agente,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'automatico', child: Text('Automático')),
+                    DropdownMenuItem(value: 'chat', child: Text('ChatGPT · chat')),
+                    DropdownMenuItem(value: 'codex', child: Text('Codex · codex')),
+                    DropdownMenuItem(value: 'cc', child: Text('Claude Code · cc')),
+                  ],
+                  onChanged: _enviando
+                      ? null
+                      : (valor) {
+                          if (valor != null) setState(() => _agente = valor);
+                        },
+                ),
+                const SizedBox(height: 18),
+                Text('ALCANCE · OPCIONAL', style: textos.labelSmall),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _alcance,
+                  minLines: 2,
+                  maxLines: 4,
+                  enabled: !_enviando,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: 'Ej. solo Flutter; no tocar backend ni contratos',
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: paleta.critico.withValues(alpha: 0.08),
+                      border: Border.all(
+                        color: paleta.critico.withValues(alpha: 0.35),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.error_outline, size: 17, color: paleta.critico),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: textos.bodySmall?.copyWith(color: paleta.critico),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _enviando ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _enviando ? null : _enviar,
+          icon: _enviando
+              ? const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.send_outlined, size: 16),
+          label: Text(_enviando ? 'Creando…' : 'Crear tarea'),
+        ),
+      ],
+    );
+  }
 }
