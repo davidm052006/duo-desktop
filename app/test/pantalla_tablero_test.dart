@@ -63,7 +63,9 @@ Widget _app(EstadoTablero estado) => ChangeNotifierProvider.value(
 );
 
 void main() {
-  testWidgets('pinta las tareas en el orden del tablero', (tester) async {
+  testWidgets('pinta las tareas y las distribuye según su estado', (
+    tester,
+  ) async {
     final estado = await _estadoCon((_) async => http.Response(_tablero, 200));
     await tester.pumpWidget(_app(estado));
 
@@ -71,8 +73,9 @@ void main() {
     expect(find.text('informe de avance'), findsOneWidget);
     expect(find.text('T-002'), findsOneWidget);
 
-    double posY(String t) => tester.getTopLeft(find.text(t)).dy;
-    expect(posY('T-005'), lessThan(posY('T-002')));
+    double posX(String t) => tester.getTopLeft(find.text(t)).dx;
+    // `entregada` va a En espera y `abierta` a En progreso.
+    expect(posX('T-002'), lessThan(posX('T-005')));
   });
 
   testWidgets('cada estado se nombra, no solo se colorea', (tester) async {
@@ -95,7 +98,13 @@ void main() {
     expect(find.text('EN PROGRESO'), findsOneWidget);
     expect(find.text('NECESITA DECISIÓN'), findsOneWidget);
     expect(find.text('FINALIZADAS'), findsOneWidget);
+    expect(find.text('INSPECTOR DE TAREA'), findsNothing);
+
+    await tester.tap(find.text('T-005'));
+    await tester.pumpAndSettle();
+
     expect(find.text('INSPECTOR DE TAREA'), findsOneWidget);
+    expect(find.byTooltip('Cerrar inspector'), findsOneWidget);
   });
 
   testWidgets('cada barra de carga lleva su cifra escrita al lado', (

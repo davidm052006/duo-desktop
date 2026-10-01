@@ -18,26 +18,11 @@ class _TableroKanbanState extends State<TableroKanban> {
   Tarea? _seleccionada;
 
   @override
-  void initState() {
-    super.initState();
-    _seleccionada = widget.tareas.isEmpty ? null : widget.tareas.first;
-  }
-
-  @override
-  void didUpdateWidget(covariant TableroKanban oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_seleccionada != null && !widget.tareas.contains(_seleccionada)) {
-      _seleccionada = widget.tareas.isEmpty ? null : widget.tareas.first;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     if (widget.tareas.isEmpty) return const _SinTareasKanban();
 
     return LayoutBuilder(
       builder: (context, limites) {
-        final muestraInspector = limites.maxWidth >= 920;
         final columnas = [
           for (final definicion in _columnas)
             _ColumnaKanban(
@@ -46,36 +31,44 @@ class _TableroKanbanState extends State<TableroKanban> {
                   .where((t) => definicion.incluye(t))
                   .toList(),
               seleccionada: _seleccionada,
-              alSeleccionar: (tarea) => setState(() => _seleccionada = tarea),
+              alSeleccionar: (tarea) => _abreInspector(tarea),
             ),
         ];
 
-        final tablero = muestraInspector
-            ? GridView.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.35,
-                children: columnas,
-              )
-            : ListView.separated(
-                itemCount: columnas.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (_, indice) =>
-                    SizedBox(height: 230, child: columnas[indice]),
-              );
-
-        if (!muestraInspector) return tablero;
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: tablero),
-            const SizedBox(width: 16),
-            SizedBox(width: 304, child: _InspectorTarea(tarea: _seleccionada)),
-          ],
+        // Las tarjetas conservan una anchura de lectura; cuando el espacio no
+        // alcanza se desplaza el tablero, nunca se aplastan las columnas ni se
+        // coloca el inspector encima de una de ellas.
+        final anchoTablero = limites.maxWidth > 1192
+            ? limites.maxWidth
+            : 1192.0;
+        return Scrollbar(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: anchoTablero,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < columnas.length; i++) ...[
+                    Expanded(child: columnas[i]),
+                    if (i != columnas.length - 1) const SizedBox(width: 16),
+                  ],
+                ],
+              ),
+            ),
+          ),
         );
       },
     );
+  }
+
+  Future<void> _abreInspector(Tarea tarea) async {
+    setState(() => _seleccionada = tarea);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _InspectorTarea(tarea: tarea),
+    );
+    if (mounted) setState(() => _seleccionada = null);
   }
 }
 
@@ -95,17 +88,13 @@ class _DefinicionColumna {
 }
 
 final _columnas = [
-  // El orden y la relación vienen de docs/diseno/README.md. La API aún no
+  // El orden y la relación vienen de docs/diseño/README.md. La API aún no
   // distingue "en curso" de "abierta", así que no se infiere actividad.
-  _DefinicionColumna('EN ESPERA', EstadoTarea.abierta, (p) => p.tintaTenue),
-  _DefinicionColumna(
-    'EN PROGRESO',
-    EstadoTarea.esperando,
-    (p) => p.series.first,
-  ),
+  _DefinicionColumna('EN ESPERA', EstadoTarea.entregada, (p) => p.tintaTenue),
+  _DefinicionColumna('EN PROGRESO', EstadoTarea.abierta, (p) => p.series.first),
   _DefinicionColumna(
     'NECESITA DECISIÓN',
-    EstadoTarea.entregada,
+    EstadoTarea.esperando,
     (p) => p.aviso,
   ),
   _DefinicionColumna('FINALIZADAS', EstadoTarea.integrada, (p) => p.bien),
@@ -279,46 +268,76 @@ class _InspectorTarea extends StatelessWidget {
   Widget build(BuildContext context) {
     final paleta = context.paleta;
     if (tarea == null) return const SizedBox.shrink();
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: .38),
-        border: Border.all(color: paleta.rejilla),
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: paleta.acentoAlt.withValues(alpha: .8)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(
-          children: [
-            Text(
-              'INSPECTOR DE TAREA',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-            const SizedBox(height: 18),
-            Text(
-              tarea!.id,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: paleta.serieDe(tarea!.dueno),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 680),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: ListView(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'INSPECTOR DE TAREA',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cerrar inspector',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              tarea!.titulo,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 24),
-            _Dato(etiqueta: 'AGENTE ASIGNADO', valor: tarea!.dueno),
-            _Dato(etiqueta: 'RAMA GIT', valor: tarea!.rama),
-            _Dato(etiqueta: 'ESTADO', valor: tarea!.estadoCrudo),
-            _Dato(etiqueta: 'ABIERTA', valor: _fecha(tarea!.abierta)),
-            const SizedBox(height: 24),
-            const _AccionFutura(etiqueta: 'REASIGNAR AGENTE', fase: 'Fase 2'),
-            const SizedBox(height: 8),
-            const _AccionFutura(
-              etiqueta: 'FORZAR MERGE A MAIN',
-              fase: 'Fase 3',
-            ),
-          ],
+              const Divider(),
+              const SizedBox(height: 14),
+              Text(
+                tarea!.id,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: paleta.serieDe(tarea!.dueno),
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                tarea!.titulo,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 24),
+              _Dato(etiqueta: 'ESTADO ACTUAL', valor: tarea!.estadoCrudo),
+              _Dato(etiqueta: 'AGENTE ASIGNADO', valor: tarea!.dueno),
+              _Dato(etiqueta: 'RAMA GIT', valor: tarea!.rama),
+              _Dato(etiqueta: 'ABIERTA', valor: _fecha(tarea!.abierta)),
+              const SizedBox(height: 8),
+              Text(
+                'ACCIONES DE FASE (SOLO LECTURA)',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              const SizedBox(height: 8),
+              const _AccionFutura(etiqueta: 'REASIGNAR AGENTE', fase: 'Fase 2'),
+              const SizedBox(height: 8),
+              const _AccionFutura(
+                etiqueta: 'CERRAR O EDITAR TAREA',
+                fase: 'Fase 2',
+              ),
+              const SizedBox(height: 8),
+              const _AccionFutura(
+                etiqueta: 'RESPONDER PREGUNTA',
+                fase: 'Fase 3',
+              ),
+              const SizedBox(height: 8),
+              const _AccionFutura(
+                etiqueta: 'INSPECCIÓN DE DIFFS',
+                fase: 'Fase 4',
+              ),
+            ],
+          ),
         ),
       ),
     );
