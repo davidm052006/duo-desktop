@@ -32,7 +32,7 @@ if test -d $raiz/app
         flutter run -d linux --dart-define=SERVICE_PORT=$port --dart-define=TOKEN=$token
 else
     set_color yellow; echo "app/ no existe todavía; solo el servicio está arriba."; set_color normal
-    echo "Pruébalo:  curl -H \"X-Duo-Token: $token\" http://127.0.0.1:$port/board"
+    echo "Pruébalo:  curl -H \"Authorization: Bearer $token\" http://127.0.0.1:$port/board"
     wait $svc
 end
 
