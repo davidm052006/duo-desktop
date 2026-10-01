@@ -29,6 +29,8 @@ class Tarea {
     required this.estado,
     required this.estadoCrudo,
     required this.abierta,
+    this.archivos = const [],
+    this.diagnostico,
   });
 
   final String id;
@@ -41,6 +43,11 @@ class Tarea {
   final String estadoCrudo;
   final DateTime abierta;
 
+  /// Datos opcionales para el inspector. El contrato actual de GET /board
+  /// todavía puede omitirlos; en ese caso la UI lo dice en vez de inventarlos.
+  final List<String> archivos;
+  final String? diagnostico;
+
   factory Tarea.desdeJson(Map<String, dynamic> json) {
     final estado = json['status'] as String;
     return Tarea(
@@ -51,7 +58,14 @@ class Tarea {
       estado: EstadoTarea.desdeTexto(estado),
       estadoCrudo: estado,
       abierta: DateTime.parse(json['opened'] as String),
+      archivos: _listaTexto(json['files'] ?? json['touchedFiles'] ?? json['touched_files']),
+      diagnostico: (json['diagnosis'] ?? json['diagnostic']) as String?,
     );
+  }
+
+  static List<String> _listaTexto(dynamic valor) {
+    if (valor is! List) return const [];
+    return valor.whereType<String>().toList(growable: false);
   }
 }
 
