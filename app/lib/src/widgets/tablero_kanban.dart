@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
+import 'tarjeta.dart';
 
 /// Vista Kanban de solo lectura sobre GET /board.
 ///
@@ -249,7 +250,9 @@ class _TarjetaTarea extends StatelessWidget {
                 color: seleccionada ? colorAgente : paleta.rejilla,
               ),
             ),
-            borderRadius: BorderRadius.circular(7),
+            // Sin borderRadius aquí: Flutter no lo admite con un borde de
+            // colores distintos por lado (la franja del agente a la
+            // izquierda). El Material que envuelve la tarjeta ya la redondea.
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

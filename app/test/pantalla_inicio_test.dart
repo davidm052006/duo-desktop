@@ -114,13 +114,15 @@ void main() {
     expect(find.textContaining('tareas sin cerrar (total: 2)'), findsOneWidget);
   });
 
-  testWidgets('lo que no existe todavía se marca con su fase', (tester) async {
+  testWidgets('el botón de nueva tarea abre el formulario', (tester) async {
     await _pinta(tester, await _estadoCon(_json));
 
-    expect(find.text('Nueva tarea · Fase 2'), findsOneWidget);
-    // Los destinos pendientes siguen en la barra lateral, visibles y apagados.
-    expect(find.text('Terminal'), findsWidgets);
-    expect(find.text('Fase 3'), findsWidgets);
+    // Dejó de estar marcado como pendiente cuando T-016 lo implementó.
+    expect(find.text('Nueva tarea · Fase 2'), findsNothing);
+
+    await tester.tap(find.textContaining('Nueva tarea').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
   });
 
   testWidgets('todos los destinos del menú se pueden abrir', (tester) async {
