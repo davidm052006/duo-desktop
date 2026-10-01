@@ -17,10 +17,7 @@ class CargaAgentes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (agentes.isEmpty) {
-      return Text(
-        'Sin agentes en el ledger.',
-        style: Theme.of(context).textTheme.bodySmall,
-      );
+      return Text('Sin agentes en el ledger.', style: Theme.of(context).textTheme.bodySmall);
     }
 
     return Column(
@@ -56,98 +53,69 @@ class _BarraAgente extends StatelessWidget {
     // Con todo a cero no hay escala posible; se dibuja la pista vacía.
     final fraccion = maximo <= 0 ? 0.0 : agente.puntos / maximo;
 
-    final etiqueta =
-        '${agente.puntos} pts · ${agente.tareas} '
-        '${agente.tareas == 1 ? "tarea" : "tareas"}';
-    return LayoutBuilder(
-      builder: (context, limites) {
-        final compacto = limites.maxWidth < 440;
-        final barra = Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: _anchoEtiqueta,
-              child: Text(
-                agente.agente,
-                style: textos.bodyMedium?.copyWith(
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: _anchoEtiqueta,
+          child: Text(
+            agente.agente,
+            style: textos.bodyMedium?.copyWith(
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w600,
             ),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  height: _alturaBarra,
-                  color: paleta.rejilla,
-                  alignment: Alignment.centerLeft,
-                  child: FractionallySizedBox(
-                    widthFactor: fraccion.clamp(0.0, 1.0),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: color,
-                        // El extremo que nace de la línea base queda recto; solo
-                        // se redondea la punta, que es el dato.
-                        borderRadius: const BorderRadius.horizontal(
-                          right: Radius.circular(4),
-                        ),
-                      ),
-                      child: const SizedBox.expand(),
+          ),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              height: _alturaBarra,
+              color: paleta.rejilla,
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: fraccion.clamp(0.0, 1.0),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: color,
+                    // El extremo que nace de la línea base queda recto; solo se
+                    // redondea la punta, que es el dato.
+                    borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(4),
                     ),
                   ),
+                  child: const SizedBox.expand(),
                 ),
               ),
             ),
-            if (!compacto) const SizedBox(width: 12),
-            if (!compacto)
-              SizedBox(
-                width: 132,
-                child: Text(
-                  etiqueta,
-                  style: textos.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            if (!compacto)
-              SizedBox(
-                width: 96,
-                child: Text(
-                  agente.ultima == null
-                      ? 'sin actividad'
-                      : _fecha(agente.ultima!),
-                  style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-        );
-        if (!compacto) return barra;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            barra,
-            const SizedBox(height: 5),
-            Padding(
-              padding: const EdgeInsets.only(left: _anchoEtiqueta),
-              child: Row(
-                children: [
-                  Expanded(child: Text(etiqueta, style: textos.bodySmall)),
-                  Text(
-                    agente.ultima == null
-                        ? 'sin actividad'
-                        : _fecha(agente.ultima!),
-                    style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Etiqueta directa: la cifra se lee sin pasar el ratón y sin leyenda.
+        // Las cifras van en tinta de texto, no del color de la serie.
+        // Las cifras se quedan en una línea: si la columna se queda corta, mejor
+        // recortar que partir la fila en dos y descuadrar las barras.
+        SizedBox(
+          width: 132,
+          child: Text(
+            '${agente.puntos} pts · ${agente.tareas} '
+            '${agente.tareas == 1 ? "tarea" : "tareas"}',
+            style: textos.bodySmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        SizedBox(
+          width: 96,
+          child: Text(
+            agente.ultima == null ? 'sin actividad' : _fecha(agente.ultima!),
+            style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 

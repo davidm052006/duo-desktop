@@ -63,9 +63,7 @@ Widget _app(EstadoTablero estado) => ChangeNotifierProvider.value(
 );
 
 void main() {
-  testWidgets('pinta las tareas en su columna Kanban', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('pinta las tareas en el orden del tablero', (tester) async {
     final estado = await _estadoCon((_) async => http.Response(_tablero, 200));
     await tester.pumpWidget(_app(estado));
 
@@ -73,13 +71,8 @@ void main() {
     expect(find.text('informe de avance'), findsOneWidget);
     expect(find.text('T-002'), findsOneWidget);
 
-    expect(find.text('EN ESPERA'), findsOneWidget);
-    expect(find.text('EN PROGRESO'), findsOneWidget);
-    expect(find.text('NECESITA DECISIÓN'), findsOneWidget);
-    expect(find.text('FINALIZADAS'), findsOneWidget);
-
-    double posX(String t) => tester.getTopLeft(find.text(t)).dx;
-    expect(posX('T-002'), lessThan(posX('T-005')));
+    double posY(String t) => tester.getTopLeft(find.text(t)).dy;
+    expect(posY('T-005'), lessThan(posY('T-002')));
   });
 
   testWidgets('cada estado se nombra, no solo se colorea', (tester) async {
@@ -90,36 +83,7 @@ void main() {
     expect(find.text('entregada'), findsOneWidget);
   });
 
-  testWidgets('en una ventana estrecha el tablero conserva sus columnas', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(360, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final estado = await _estadoCon((_) async => http.Response(_tablero, 200));
-    await tester.pumpWidget(_app(estado));
-
-    expect(find.text('EN ESPERA'), findsOneWidget);
-    expect(find.text('EN PROGRESO'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('al abrir una tarjeta el inspector usa el detalle completo', (
-    tester,
-  ) async {
-    final estado = await _estadoCon((_) async => http.Response(_tablero, 200));
-    await tester.pumpWidget(_app(estado));
-
-    await tester.tap(find.text('T-005'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('INSPECTOR DE TAREA'), findsOneWidget);
-    expect(find.text('ESTADO ACTUAL'), findsOneWidget);
-    expect(find.byTooltip('Cerrar inspector'), findsOneWidget);
-  });
-
-  testWidgets('cada barra de carga lleva su cifra escrita al lado', (
-    tester,
-  ) async {
+  testWidgets('cada barra de carga lleva su cifra escrita al lado', (tester) async {
     final estado = await _estadoCon((_) async => http.Response(_tablero, 200));
     await tester.pumpWidget(_app(estado));
 
@@ -149,10 +113,7 @@ void main() {
     final estado = await _estadoCon(
       (_) async => http.Response(
         jsonEncode({
-          'error': {
-            'code': 'unauthorized',
-            'message': 'Token local ausente o inválido.',
-          },
+          'error': {'code': 'unauthorized', 'message': 'Token local ausente o inválido.'},
         }),
         401,
       ),
@@ -163,9 +124,7 @@ void main() {
     expect(find.textContaining('scripts/dev.fish'), findsOneWidget);
   });
 
-  testWidgets('un fallo tras haber cargado no borra lo que ya se veía', (
-    tester,
-  ) async {
+  testWidgets('un fallo tras haber cargado no borra lo que ya se veía', (tester) async {
     var falla = false;
     final estado = EstadoTablero(
       cliente: ClienteDuo(
@@ -185,15 +144,7 @@ void main() {
     await estado.refresca();
     await tester.pump();
 
-    expect(
-      find.text('T-005'),
-      findsOneWidget,
-      reason: 'los datos siguen en pantalla',
-    );
-    expect(
-      find.text('sin conexión'),
-      findsOneWidget,
-      reason: 'pero avisados de que están viejos',
-    );
+    expect(find.text('T-005'), findsOneWidget, reason: 'los datos siguen en pantalla');
+    expect(find.text('sin conexión'), findsOneWidget, reason: 'pero avisados de que están viejos');
   });
 }

@@ -21,9 +21,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
     required this.tintaSecundaria,
     required this.tintaTenue,
     required this.rejilla,
-    required this.panel,
-    required this.acento,
-    required this.acentoAlt,
     required this.series,
     required this.bien,
     required this.aviso,
@@ -36,11 +33,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
   final Color tintaSecundaria;
   final Color tintaTenue;
   final Color rejilla;
-
-  /// Superficie elevada y acentos que fija el diseño del tablero.
-  final Color panel;
-  final Color acento;
-  final Color acentoAlt;
 
   /// Slots categóricos en orden fijo: la posición es lo que da la seguridad,
   /// no es decorativo.
@@ -67,9 +59,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
     tintaSecundaria: Color(0xFF52514E),
     tintaTenue: Color(0xFF6F6E6A),
     rejilla: Color(0xFFE6E5E1),
-    panel: Color(0xFFF4F3F0),
-    acento: Color(0xFFC2185B),
-    acentoAlt: Color(0xFF0E7490),
     series: [Color(0xFF2A78D6), Color(0xFFEB6834), Color(0xFF1BAF7A)],
     bien: Color(0xFF0CA30C),
     aviso: Color(0xFFFAB219),
@@ -85,9 +74,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
     tintaSecundaria: Color(0xFFC3C2B7),
     tintaTenue: Color(0xFF8E8D84),
     rejilla: Color(0xFF383835),
-    panel: Color(0xFF232322),
-    acento: Color(0xFFFF8FC4),
-    acentoAlt: Color(0xFF5CD7F2),
     series: [Color(0xFF3987E5), Color(0xFFD95926), Color(0xFF199E70)],
     bien: Color(0xFF0CA30C),
     aviso: Color(0xFFFAB219),
@@ -102,9 +88,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
     Color? tintaSecundaria,
     Color? tintaTenue,
     Color? rejilla,
-    Color? panel,
-    Color? acento,
-    Color? acentoAlt,
     List<Color>? series,
     Color? bien,
     Color? aviso,
@@ -116,9 +99,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
     tintaSecundaria: tintaSecundaria ?? this.tintaSecundaria,
     tintaTenue: tintaTenue ?? this.tintaTenue,
     rejilla: rejilla ?? this.rejilla,
-    panel: panel ?? this.panel,
-    acento: acento ?? this.acento,
-    acentoAlt: acentoAlt ?? this.acentoAlt,
     series: series ?? this.series,
     bien: bien ?? this.bien,
     aviso: aviso ?? this.aviso,
@@ -135,9 +115,6 @@ class PaletaDatos extends ThemeExtension<PaletaDatos> {
       tintaSecundaria: Color.lerp(tintaSecundaria, otra.tintaSecundaria, t)!,
       tintaTenue: Color.lerp(tintaTenue, otra.tintaTenue, t)!,
       rejilla: Color.lerp(rejilla, otra.rejilla, t)!,
-      panel: Color.lerp(panel, otra.panel, t)!,
-      acento: Color.lerp(acento, otra.acento, t)!,
-      acentoAlt: Color.lerp(acentoAlt, otra.acentoAlt, t)!,
       series: [
         for (var i = 0; i < series.length; i++)
           Color.lerp(series[i], otra.series[i], t)!,
