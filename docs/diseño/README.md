@@ -173,3 +173,42 @@ Para el Kanban:
 - Ninguna característica de una fase futura parece ya disponible.
 - La implementación conserva la identidad visual de los mockups sin copiar
   sus valores ficticios.
+
+
+### Fondos de vídeo (T-023)
+
+La personalización de fondo puede usar una carpeta local de vídeos. La app:
+
+- persiste la carpeta y el intervalo de rotación;
+- enumera candidatos `.mp4`, `.m4v`, `.mov`, `.webm` y `.mkv`;
+- elige un vídeo aleatorio al iniciar y cuando vence el intervalo;
+- no selecciona ni rota vídeos si el modo de fondo es `ninguno` o `degradado`;
+- reproduce el vídeo detrás de `MarcoApp` con `media_kit`;
+- arranca siempre muteado y sin controles;
+- mantiene un único reproductor activo;
+- libera el `Player` cuando cambia el widget o se cierra la app;
+- si un archivo falla al abrir o decodificar, lo marca como fallido durante esa sesión y prueba otro candidato.
+
+Dependencias multimedia:
+
+```yaml
+media_kit: ^1.2.6
+media_kit_video: ^2.0.1
+media_kit_libs_video: ^1.0.7
+```
+
+`MediaKit.ensureInitialized()` se ejecuta antes de `runApp`.
+
+#### Linux
+
+El render usa el backend de `media_kit`/libmpv. La disponibilidad real de codecs depende del sistema y de libmpv. En Debian/Ubuntu, la documentación de media_kit indica instalar:
+
+```bash
+sudo apt install libmpv-dev mpv
+```
+
+No se debe asumir que una extensión válida implica que el codec interno sea reproducible; por eso la app escucha errores del reproductor y salta al siguiente archivo.
+
+#### Opacidad de superficies
+
+La preferencia de opacidad se limita a 72–98%. Se aplica al color `panel` del tema, no al árbol completo con `Opacity`. Así texto, iconos y bordes mantienen opacidad completa y contraste mientras las cards, barras y paneles dejan ver el fondo.
