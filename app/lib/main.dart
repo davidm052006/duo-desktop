@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:provider/provider.dart';
 
 import 'src/estado/estado_tablero.dart';
@@ -6,6 +7,8 @@ import 'src/pantallas/marco_app.dart';
 import 'src/tema/tema.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   runApp(const AppDuo());
 }
 
