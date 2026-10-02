@@ -76,6 +76,21 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
     await _refrescarVideos();
   }
 
+  void _falloPersistencia(Object error) {
+    if (!mounted) return;
+    final mensaje = error is FalloPreferencias ? error.mensaje : error.toString();
+    setState(() {
+      _fallo = mensaje;
+    });
+  }
+
+  void _persistenciaOk() {
+    if (!mounted) return;
+    if (_fallo != null) {
+      setState(() => _fallo = null);
+    }
+  }
+
   Future<void> _guardarTema(String valor) async {
     setState(() => _tema = valor);
     final prefs = await SharedPreferences.getInstance();
@@ -95,10 +110,17 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   }
 
   Future<void> _guardarFondo(String valor) async {
-    setState(() => _fondo = valor);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(FondoVideoConfig.fondoKey, valor);
-    FondoVideoConfig.cambios.value++;
+    final anterior = _fondo;
+    try {
+      await FondoVideoConfig.guardarModoFondo(valor);
+      if (!mounted) return;
+      setState(() => _fondo = valor);
+      _persistenciaOk();
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _fondo = anterior);
+      _falloPersistencia(e);
+    }
   }
 
 
@@ -109,9 +131,21 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
     );
     if (ruta == null || !mounted) return;
 
-    setState(() => _carpetaVideo = ruta);
-    await _persistirFondoVideo();
-    await _refrescarVideos();
+    final anterior = _carpetaVideo;
+    try {
+      await FondoVideoConfig.guardarVideo(
+        carpeta: ruta,
+        intervaloMinutos: _intervaloVideo,
+      );
+      if (!mounted) return;
+      setState(() => _carpetaVideo = ruta);
+      _persistenciaOk();
+      await _refrescarVideos();
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _carpetaVideo = anterior);
+      _falloPersistencia(e);
+    }
   }
 
   Future<void> _refrescarVideos() async {
@@ -145,21 +179,36 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   }
 
   Future<void> _guardarIntervalo(int valor) async {
-    setState(() => _intervaloVideo = valor);
-    await _persistirFondoVideo();
+    final anterior = _intervaloVideo;
+    try {
+      await FondoVideoConfig.guardarVideo(
+        carpeta: _carpetaVideo,
+        intervaloMinutos: valor,
+      );
+      if (!mounted) return;
+      setState(() => _intervaloVideo = valor);
+      _persistenciaOk();
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _intervaloVideo = anterior);
+      _falloPersistencia(e);
+    }
   }
 
   Future<void> _guardarOpacidad(double valor) async {
+    final anterior = _opacidadPaneles;
     final opacidad = FondoVideoConfig.normalizarOpacidad(valor);
-    setState(() => _opacidadPaneles = opacidad);
-    await FondoVideoConfig.guardarOpacidad(opacidad);
+    try {
+      await FondoVideoConfig.guardarOpacidad(opacidad);
+      if (!mounted) return;
+      setState(() => _opacidadPaneles = opacidad);
+      _persistenciaOk();
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _opacidadPaneles = anterior);
+      _falloPersistencia(e);
+    }
   }
-
-  Future<void> _persistirFondoVideo() => FondoVideoConfig.guardar(
-        carpeta: _carpetaVideo,
-        intervaloMinutos: _intervaloVideo,
-        opacidadPaneles: _opacidadPaneles,
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -247,6 +296,7 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
               acento: _acento,
               escalaTexto: _escalaTexto,
               fondo: _fondo,
+              persistenciaOk: _fallo == null,
             ),
           ],
         );
@@ -432,6 +482,7 @@ class _Fondo extends StatelessWidget {
   });
 
   final String fondo;
+  final bool persistenciaOk;
   final String carpetaVideo;
   final int intervaloVideo;
   final double opacidadPaneles;
@@ -635,6 +686,7 @@ class _VistaPrevia extends StatelessWidget {
     required this.acento,
     required this.escalaTexto,
     required this.fondo,
+    required this.persistenciaOk,
   });
 
   final String tema;
@@ -656,7 +708,10 @@ class _VistaPrevia extends StatelessWidget {
     return Tarjeta(
       titulo: 'Vista previa',
       icono: Icons.visibility_outlined,
-      sufijo: Insignia('guardado', tono: paleta.bien),
+      sufijo: Insignia(
+        persistenciaOk ? 'persistido' : 'sin guardar',
+        tono: persistenciaOk ? paleta.bien : paleta.critico,
+      ),
       hijo: Container(
         constraints: const BoxConstraints(minHeight: 150),
         padding: const EdgeInsets.all(18),
