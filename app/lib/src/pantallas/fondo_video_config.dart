@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Vive temporalmente en pantallas porque T-023 restringe el territorio a
 /// app/lib/src/pantallas. No reproduce vídeo por sí mismo.
 abstract final class FondoVideoConfig {
+  static final cambios = ValueNotifier<int>(0);
   static const carpetaKey = 'personalizacion.video.carpeta';
   static const intervaloKey = 'personalizacion.video.intervalo_minutos';
   static const opacidadPanelesKey = 'personalizacion.paneles.opacidad';
@@ -72,6 +73,7 @@ abstract final class FondoVideoConfig {
       opacidadPanelesKey,
       opacidadPaneles.clamp(0.72, 0.98).toDouble(),
     );
+    cambios.value++;
   }
 }
 
