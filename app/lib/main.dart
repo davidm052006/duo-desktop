@@ -3,12 +3,14 @@ import 'package:media_kit/media_kit.dart';
 import 'package:provider/provider.dart';
 
 import 'src/estado/estado_tablero.dart';
+import 'src/pantallas/fondo_video_config.dart';
 import 'src/pantallas/marco_app.dart';
 import 'src/tema/tema.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  await FondoVideoConfig.cargarPreferenciasVisuales();
   runApp(const AppDuo());
 }
 
