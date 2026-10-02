@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_all/webview_all.dart';
+import 'package:webview_all_linux/webview_all_linux.dart';
 
 import '../tema/paleta.dart';
 
@@ -75,40 +78,62 @@ class _PantallaChatsState extends State<PantallaChats> {
     });
 
     try {
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageStarted: (url) {
-              if (!mounted) return;
-              setState(() {
-                _estado = _EstadoChatWeb.cargando;
-                _mensajeEstado = 'Cargando $_hostActual…';
-              });
-            },
-            onPageFinished: (url) {
-              if (!mounted) return;
-              setState(() {
-                _estado = _EstadoChatWeb.listo;
-                _mensajeEstado = 'Página lista';
-              });
-            },
-            onWebResourceError: (error) {
-              if (!mounted) return;
-              setState(() {
-                _estado = _EstadoChatWeb.errorNavegacion;
-                _mensajeEstado = error.description.isNotEmpty
-                    ? error.description
-                    : 'Error de red o de carga';
-              });
-            },
-            onNavigationRequest: (request) {
-              // Por ahora permitimos navegación interna.
-              // Enlaces externos complejos se pueden derivar al navegador más adelante.
-              return NavigationDecision.navigate;
-            },
-          ),
-        );
+      // Google abre parte del flujo OAuth con window.open(). En Linux el
+      // backend WebKitGTK redirige esa ventana al mismo panel; hay que
+      // permitirla explícitamente o la verificación puede quedarse cargando.
+      final controller =
+          (Platform.isLinux
+                ? WebViewController.fromPlatformCreationParams(
+                    const LinuxWebViewControllerCreationParams(
+                      javascriptCanOpenWindowsAutomatically: true,
+                    ),
+                  )
+                : WebViewController())
+            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            ..setOnConsoleMessage((mensaje) {
+              debugPrint(
+                '[Chats/WebView] consola ${mensaje.level.name}: '
+                '${mensaje.message}',
+              );
+            })
+            ..setNavigationDelegate(
+              NavigationDelegate(
+                onPageStarted: (url) {
+                  debugPrint('[Chats/WebView] inicio: $url');
+                  if (!mounted) return;
+                  setState(() {
+                    _estado = _EstadoChatWeb.cargando;
+                    _mensajeEstado = 'Cargando $_hostActual…';
+                  });
+                },
+                onPageFinished: (url) {
+                  debugPrint('[Chats/WebView] fin: $url');
+                  if (!mounted) return;
+                  setState(() {
+                    _estado = _EstadoChatWeb.listo;
+                    _mensajeEstado = 'Página lista';
+                  });
+                },
+                onWebResourceError: (error) {
+                  debugPrint(
+                    '[Chats/WebView] error ${error.errorCode}: '
+                    '${error.description} (${error.url ?? 'sin URL'})',
+                  );
+                  if (!mounted) return;
+                  setState(() {
+                    _estado = _EstadoChatWeb.errorNavegacion;
+                    _mensajeEstado = error.description.isNotEmpty
+                        ? error.description
+                        : 'Error de red o de carga';
+                  });
+                },
+                onNavigationRequest: (request) {
+                  debugPrint('[Chats/WebView] navegación: ${request.url}');
+                  // El backend Linux carga los popups OAuth en este mismo panel.
+                  return NavigationDecision.navigate;
+                },
+              ),
+            );
 
       await controller.loadRequest(Uri.parse(_urlActual));
 
