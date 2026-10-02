@@ -1,88 +1,117 @@
-# T-023 — Entregable chat
+# T-023 — Entregable chat (continuación tras revisión)
 
 ## Estado
 
-Trabajo realizado en:
+Continuación realizada en la misma rama:
 
 `chat/t-023-implementa-fondos-de-video-configurables`
 
-Base: `origin/main` / `main`.
-
 No se escribió ni se integró en `main`.
 
-## Territorio respetado
+## Resumen
 
-El brief contiene una contradicción: la descripción pide tocar tema global, dependencias, tests y documentación, pero la sección **Territorio** restringe explícitamente la tarea a:
+La ampliación de territorio permitió completar la implementación real de fondos de vídeo:
 
-`app/lib/src/pantallas`
+- backend multimedia real con `media_kit`;
+- vídeo renderizado detrás de `MarcoApp`;
+- audio silenciado desde la creación del `Player` y volumen 0;
+- sin controles sobre el vídeo de fondo;
+- cambio aleatorio por intervalo;
+- salto automático a otro archivo cuando el reproductor reporta error;
+- liberación del `Player` al cambiar de vídeo o destruir el widget;
+- corrección del bug de modos no vídeo;
+- opacidad global aplicada a superficies de panel, no a texto ni iconos;
+- tests unitarios/widget añadidos;
+- documentación de diseño actualizada.
 
-Se respetó esa restricción estricta. Solo se modificaron:
+## Dependencias
 
-- `app/lib/src/pantallas/fondo_video_config.dart`
-- `app/lib/src/pantallas/pantalla_personalizacion.dart`
-- `app/lib/src/pantallas/marco_app.dart`
+Añadidas en `app/pubspec.yaml`:
 
-No se modificaron:
+```yaml
+media_kit: ^1.2.6
+media_kit_video: ^2.0.1
+media_kit_libs_video: ^1.0.7
+```
 
-- `app/pubspec.yaml`
-- `app/lib/src/tema/`
-- `app/lib/src/widgets/`
-- `app/test/`
-- `docs/`
-- `service/`
-- `scripts/`
+`app/lib/main.dart` ejecuta:
 
-## Implementado
+```dart
+WidgetsFlutterBinding.ensureInitialized();
+MediaKit.ensureInitialized();
+```
 
-### Configuración de carpeta de vídeos
+antes de arrancar la app.
 
-En Personalización:
+## Reproducción real
 
-- selector de carpeta local implementado sin dependencias nuevas;
-- navegación por carpetas dentro de un diálogo Flutter;
-- manejo de carpeta inexistente;
-- manejo de permisos/errores de lectura;
-- listado de subcarpetas;
-- carpeta seleccionada persistida con `shared_preferences`.
+Se añadió:
 
-Clave:
+`app/lib/src/pantallas/fondo_video_reproductor.dart`
 
-`personalizacion.video.carpeta`
+El widget:
 
-### Enumeración y validación básica
+- crea un `Player` real;
+- crea un `VideoController`;
+- abre archivos locales mediante URI `file://`;
+- usa `Video(... fit: BoxFit.cover)`;
+- no acepta interacción;
+- inicia muteado;
+- escucha `player.stream.error`;
+- notifica un fallo una sola vez por ruta;
+- cancela su suscripción y ejecuta `player.dispose()` en `dispose`.
 
-Se enumeran archivos de la carpeta sin seguir enlaces simbólicos.
+`MarcoApp` usa una `ValueKey` basada en la ruta. Al cambiar de vídeo Flutter destruye el widget anterior y por tanto libera el reproductor antes/de forma asociada al nuevo render.
 
-Extensiones candidatas:
+## Fallback ante vídeo inválido
 
-- `.mp4`
-- `.m4v`
-- `.mov`
-- `.webm`
-- `.mkv`
+Durante una sesión se mantiene el conjunto de rutas que fallaron.
 
-La UI muestra:
+Si el reproductor informa error:
 
-- carpeta vacía;
-- carpeta no legible;
-- cantidad de vídeos candidatos;
-- nombres de archivos detectados.
+1. la ruta actual se marca como fallida;
+2. se elige aleatoriamente otro candidato;
+3. no se vuelve a elegir una ruta fallida en esa sesión;
+4. si ya no quedan candidatos, se muestra un estado de error y se deja de fingir reproducción.
 
-Importante: esta es validación por extensión y acceso al archivo. La validación real de codec/contenedor requiere el backend de reproducción que el territorio actual no permite añadir.
+La validación por extensión sigue siendo solo un filtro previo: el error real de decodificación lo decide el backend multimedia.
 
-### Selección aleatoria y rotación
+## Bug corregido — Sin fondo / Degradado
 
-`MarcoApp`:
+`MarcoApp` lee primero:
 
-- lee las preferencias al iniciar;
-- elige un archivo candidato aleatorio;
-- configura un `Timer.periodic` para volver a seleccionar;
-- cancela el timer al liberar el widget;
-- vuelve a cargar la configuración al reanudar la app;
-- reacciona inmediatamente a cambios hechos desde Personalización mediante una señal local;
-- maneja carpeta vacía, carpeta no legible y archivos desaparecidos.
+`personalizacion.fondo`
 
-Intervalos disponibles:
+La rotación solo se activa cuando el valor es exactamente:
+
+`video`
+
+Para:
+
+- `ninguno`;
+- `degradado`;
+- `imagen`;
+- valores desconocidos;
+
+se hace lo siguiente:
+
+- se cancela cualquier timer anterior;
+- se limpia el vídeo seleccionado;
+- se limpia el estado de vídeo;
+- no se enumera la carpeta;
+- no se selecciona archivo;
+- no se crea reproductor;
+- no aparece indicador de vídeo.
+
+Por tanto una carpeta guardada no activa vídeo por sí sola.
+
+## Degradado
+
+Cuando el modo es `degradado`, `MarcoApp` pinta un degradado real como capa de fondo, sin inicializar reproducción.
+
+## Rotación
+
+Intervalos aceptados:
 
 - 5 minutos;
 - 15 minutos;
@@ -90,75 +119,102 @@ Intervalos disponibles:
 - 60 minutos;
 - 120 minutos.
 
-Clave:
+Cualquier valor inválido se normaliza a 30 minutos.
 
-`personalizacion.video.intervalo_minutos`
+No se crea `Timer.periodic` si la carpeta no contiene candidatos.
 
-### Opacidad de paneles
+Al cambiar carpeta/intervalo/modo desde Personalización se actualiza la rotación inmediatamente.
 
-Se añadió en Personalización:
+Cambiar únicamente la opacidad ya NO reinicia ni relee el reproductor.
 
-- slider 72–98%;
-- valor persistido;
-- normalización de valores inválidos;
-- rango deliberadamente seguro para no permitir transparencias extremas.
+## Opacidad global de superficies
 
-Clave:
+Rango seguro:
 
-`personalizacion.paneles.opacidad`
+`0.72 ... 0.98`
 
-La aplicación global de esta opacidad a todas las cards/paneles NO se implementó porque `Tarjeta` y la paleta/tema están fuera del territorio permitido.
+`TemaDuo.claro/oscuro` reciben la opacidad y generan una copia de `PaletaDatos` donde solo:
 
-### Estado visible
+`panel`
 
-La barra superior muestra un indicador cuando:
+lleva alfa reducido.
 
-- existe un vídeo seleccionado para la rotación; o
-- la configuración del fondo tiene un error.
+Texto e iconos mantienen sus colores de tinta con alfa completo.
 
-El tooltip deja claro que el playback real todavía no está conectado.
+No se usa `Opacity` sobre el árbol de widgets.
 
-## Playback de vídeo: bloqueo por territorio
+Esto afecta globalmente a componentes que consumen `paleta.panel`, incluyendo:
 
-No se simuló reproducción.
+- `Tarjeta`;
+- barra superior;
+- barra lateral;
+- app bars que usan la superficie de panel.
 
-El proyecto no tiene actualmente un backend de vídeo Linux entre sus dependencias.
+El `MaterialApp` se reconstruye al cambiar la preferencia mediante un `ValueListenableBuilder<double>`.
 
-El paquete oficial `video_player` no soporta Linux desktop. Para Linux sería necesario añadir un backend compatible, por ejemplo `media_kit` / `media_kit_video`, lo cual requiere modificar `app/pubspec.yaml` y posiblemente inicialización/plataforma fuera de `app/lib/src/pantallas`.
+## Fondo global
 
-Como el territorio prohíbe esos cambios, T-023 deja preparada la configuración, enumeración, selección y rotación, pero **no reproduce el archivo detrás de la interfaz**.
+El scaffold principal y el tema permiten fondo transparente.
 
-Tampoco se creó un reproductor falso ni una imagen sustituta presentada como vídeo.
+Orden de capas en `MarcoApp`:
 
-## Audio
+1. superficie/degradado base;
+2. vídeo real cuando el modo es vídeo;
+3. toda la interfaz de Duo Desktop.
 
-No hay reproducción, por lo que tampoco existe audio activo.
+Así el vídeo queda detrás de la UI y no intercepta eventos.
 
-Cuando se conecte el backend de vídeo, el contrato visual de T-023 requiere iniciar con volumen 0 / mute.
+## Tests añadidos
 
-## Liberación de recursos
+Nuevo:
 
-Dentro del alcance actual:
+`app/test/fondo_video_config_test.dart`
 
-- se cancela el `Timer` en `dispose`;
-- se elimina el `WidgetsBindingObserver`;
-- se elimina el listener de cambios de preferencias.
+Cubre:
 
-No existe todavía un controlador multimedia que liberar.
+- selección aleatoria;
+- exclusión del vídeo actual;
+- exclusión de vídeos fallidos;
+- normalización del intervalo;
+- modo `ninguno`;
+- modo `degradado`;
+- modo `video`;
+- clamp de opacidad;
+- opacidad solo del color `panel`;
+- texto con alfa completo;
+- enumeración de extensiones candidatas.
 
-## Pruebas ejecutadas
+También se actualizó:
 
-No se pudieron ejecutar pruebas ni `flutter analyze` desde este conector porque el worktree local de la rama no está montado en el entorno de ejecución.
+`app/test/pantalla_personalizacion_test.dart`
 
-Sí se verificó mediante GitHub:
+para:
 
-- rama basada en `main`;
-- ahead: 8 commits;
-- behind: 0;
-- solo 3 archivos modificados;
-- todos dentro de `app/lib/src/pantallas`.
+- distinguir slider de tipografía y slider de opacidad;
+- comprobar opacidad por defecto/persistencia;
+- comprobar que `Sin fondo` no muestra controles de vídeo;
+- comprobar que modo `video` sí muestra carpeta e intervalo.
 
-Validación local requerida por Codex:
+## Documentación
+
+Actualizado:
+
+`docs/diseño/README.md`
+
+Incluye:
+
+- arquitectura del fondo de vídeo;
+- dependencias;
+- inicialización;
+- mute;
+- política de salto ante errores;
+- comportamiento de modos no vídeo;
+- opacidad de superficies;
+- límite Linux/libmpv.
+
+## Pruebas solicitadas
+
+Solicitadas:
 
 ```bash
 cd app
@@ -167,84 +223,103 @@ flutter test
 flutter build linux --debug
 ```
 
-Después:
+### Resultado real
 
-```fish
-scripts/dev.fish
+**NO EJECUTADAS EN ESTE ENTORNO.**
+
+El entorno disponible para ChatGPT en esta sesión:
+
+- no tiene el worktree local de `duo-desktop` montado;
+- no tiene ejecutable `flutter`;
+- no tiene ejecutable `dart`;
+- el contenedor no puede clonar GitHub por resolución de red.
+
+Por eso no se declara ninguna de esas validaciones como pasada.
+
+## pubspec.lock
+
+`app/pubspec.lock` debe regenerarse exclusivamente mediante:
+
+```bash
+cd app
+flutter pub get
 ```
 
-desde el worktree de T-023.
+No se modificó manualmente: fabricar un lockfile sin resolver toda la clausura de dependencias sería menos seguro que dejar explícita la validación pendiente.
 
-## Casos que Codex debe probar
+Codex debe ejecutar `flutter pub get` en el worktree T-023, revisar el lockfile generado y commitearlo en esta misma rama antes de aprobar/integrar.
 
-1. Sin carpeta configurada.
-2. Elegir una carpeta válida.
-3. Carpeta vacía.
-4. Carpeta sin permisos de lectura.
-5. Carpeta eliminada después de guardarla.
-6. Vídeos con extensiones admitidas y archivos no admitidos mezclados.
-7. Cambio de intervalo sin reiniciar la app.
-8. Reanudar la ventana/app.
-9. Cerrar la app y comprobar que el timer se libera.
-10. Preferencias corruptas o intervalo fuera de opciones.
-11. Slider de opacidad entre 72% y 98%.
+## Validación requerida por Codex
+
+Desde el worktree:
+
+```bash
+git switch chat/t-023-implementa-fondos-de-video-configurables
+cd app
+flutter pub get
+flutter analyze
+flutter test
+flutter build linux --debug
+```
+
+Después debe probar visualmente:
+
+1. `Sin fondo`: nunca crea ni muestra vídeo.
+2. `Degradado`: nunca crea ni muestra vídeo.
+3. `Vídeo`: render real detrás de la UI.
+4. El vídeo inicia sin audio.
+5. Cambio de intervalo rota a otro candidato.
+6. Archivo corrupto/no decodificable salta al siguiente.
+7. Cambio de modo vídeo → ninguno destruye el reproductor.
+8. Cambio de archivo destruye el reproductor anterior.
+9. Opacidad mínima 72% deja texto/iconos totalmente opacos.
+10. Cerrar app no deja proceso/controlador multimedia activo.
 
 ## Límites de plataforma
 
 ### Linux
 
-La selección de carpeta implementada usa `dart:io` y un navegador de carpetas propio, por lo que no depende de portal GTK/XDG ni de `file_picker`.
+`media_kit` usa libmpv para el backend multimedia de escritorio Linux.
 
-Consecuencias:
+La disponibilidad real de codecs depende del entorno/libmpv, no solo de la extensión del archivo.
 
-- funciona sobre rutas que el proceso puede leer;
-- permisos del sistema se reflejan como error;
-- no sigue symlinks al enumerar vídeos;
-- no ofrece integración nativa con portales/sandbox;
-- no valida codecs porque todavía no existe backend multimedia.
+En Debian/Ubuntu, la documentación de media_kit indica instalar las dependencias de libmpv/mpv cuando no estén presentes.
 
-### Reproducción
+### Carpeta
 
-Pendiente por territorio.
+El selector actual es un navegador de carpetas hecho en Flutter/`dart:io`.
 
-Para Linux se necesita una dependencia con soporte real de vídeo desktop. Esto debe resolverse en una tarea que permita tocar `pubspec.yaml` e inicialización global.
+- respeta permisos normales del proceso;
+- muestra errores de acceso;
+- no sigue symlinks al enumerar;
+- no depende de un portal XDG/GTK.
 
-### Opacidad global
+## Commits de la continuación
 
-Pendiente por territorio.
+Entre los commits añadidos en esta continuación están:
 
-La preferencia ya existe, pero aplicarla correctamente requiere tocar `Tarjeta` y/o el tema/paleta para cambiar únicamente superficies sin reducir la opacidad del texto.
+- `45ab6a2` chore(app): añade media_kit para fondo de vídeo
+- `7e8444b` feat(app): inicializa backend multimedia
+- `22b7615` feat(ui): reproduce vídeo real detrás de la interfaz
+- `6273915` feat(ui): integra fondo de vídeo y respeta modos no vídeo
+- `53c8088` feat(theme): aplica opacidad global a superficies de panel
+- `f5db2a1` test(ui): cubre selección intervalo modo y opacidad
+- `cd4d665` docs(design): documenta fondos de vídeo Linux
+- `1e063cb` test(ui): adapta Personalización a fondo y opacidad
+- `db0b442` perf(ui): separa opacidad de la rotación de vídeo
+- `50bffc0` perf(ui): no inicia rotación con carpeta vacía
 
-No debe implementarse envolviendo toda la UI en `Opacity`, porque eso degradaría también texto, iconos y contraste.
-
-## Commits
-
-- `a6e8454` feat(ui): añade configuración y selector de carpeta de vídeo
-- `54e611f` feat(ui): configura carpeta intervalo y opacidad de fondos
-- `02c4495` fix(ui): evita extension no disponible en selector
-- `fceb6ca` feat(ui): selecciona y rota vídeos configurados
-- `00650b1` fix(ui): ajusta tipo del intervalo de rotación
-- `7c0494b` feat(ui): notifica cambios de configuración de fondo
-- `ff0aafe` fix(ui): aplica cambios de rotación sin reiniciar
-- `b36906f` fix(ui): normaliza preferencias de vídeo
-
-Todos llevan:
+Todos los commits creados por chat incluyen:
 
 `Tarea: T-023`
 `Agente: chat`
 
-## Pendiente para completar el brief original
+## Estado Git
 
-Requiere una tarea con territorio ampliado para:
+Comparación actual contra `main`:
 
-1. añadir dependencias de reproducción Linux;
-2. inicializar el backend multimedia;
-3. renderizar el vídeo detrás de `MarcoApp`;
-4. iniciar siempre muteado;
-5. detectar fallo de decodificación y saltar al siguiente vídeo;
-6. liberar el controlador multimedia al cambiar/cerrar;
-7. aplicar `personalizacion.paneles.opacidad` globalmente a superficies;
-8. añadir tests en `app/test/`;
-9. documentar la dependencia y límites en `docs/diseño/`.
+- ahead: 33
+- behind: 0
+- archivos modificados: 10
 
-No se invadieron esos archivos en T-023.
+No se realizó merge a `main`.
