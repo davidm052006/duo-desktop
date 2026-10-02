@@ -421,3 +421,29 @@ upgrade Flutter compatible con meta 1.19
 5. Si el fallo queda aislado a `webview_all`, migrar solo la capa WebView a `flutter_inappwebview`.
 6. En paralelo o después, probar upgrade controlado de Flutter para reabrir `webview_flutter_linux`.
 7. Mantener Chrome externo solo como fallback; no convertirlo en implementación principal en esta fase.
+## Cómo activar diagnóstico
+
+En `app/lib/src/pantallas/pantalla_chats.dart`, cambia
+`PantallaChats.kDiagnosticoWebView` a `true`. En ese modo ambos proveedores
+cargan `example.com`, el estado indica `· diagnóstico` y aparece el botón
+**Cargar HTML de prueba**. Para volver al comportamiento real, déjalo en
+`false`.
+
+## Pruebas de entorno
+
+Primero desactiva el vídeo de fondo en la app: **Personalización → Fondo →
+Ninguno**. Luego prueba una ejecución por vez:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 flutter run -d linux
+GDK_BACKEND=x11 flutter run -d linux
+GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 flutter run -d linux
+```
+
+## Criterio de éxito del diagnóstico
+
+- `example.com` visible: el motor pinta; el problema está en el sitio, GPU o
+  composición de las SPA.
+- HTML local visible pero `example.com` no: red, CSP o bloqueo de navegación.
+- Nada visible ni con HTML local: renderizado WebKit/Flutter (DMA-BUF,
+  `media_kit` o el paquete).

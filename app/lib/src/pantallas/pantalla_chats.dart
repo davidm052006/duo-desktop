@@ -9,21 +9,17 @@ import '../tema/paleta.dart';
 class PantallaChats extends StatefulWidget {
   const PantallaChats({super.key});
 
+  /// Interruptor temporal para aislar el problema de pintura del WebView en
+  /// Linux. Debe quedar en `false` cuando termine el experimento.
+  static const bool kDiagnosticoWebView = true;
+
   @override
   State<PantallaChats> createState() => _PantallaChatsState();
 }
 
 enum _ProveedorChat {
-  chatgpt(
-    nombre: 'ChatGPT',
-    url: 'https://chatgpt.com',
-    host: 'chatgpt.com',
-  ),
-  grok(
-    nombre: 'Grok',
-    url: 'https://grok.x.ai',
-    host: 'grok.x.ai',
-  );
+  chatgpt(nombre: 'ChatGPT', url: 'https://chatgpt.com', host: 'chatgpt.com'),
+  grok(nombre: 'Grok', url: 'https://grok.x.ai', host: 'grok.x.ai');
 
   const _ProveedorChat({
     required this.nombre,
@@ -53,6 +49,13 @@ class _PantallaChatsState extends State<PantallaChats> {
   WebViewController? _controller;
   bool _webViewDisponible = true;
 
+  String get _urlActual => PantallaChats.kDiagnosticoWebView
+      ? 'https://example.com'
+      : _proveedor.url;
+
+  String get _hostActual =>
+      PantallaChats.kDiagnosticoWebView ? 'example.com' : _proveedor.host;
+
   @override
   void initState() {
     super.initState();
@@ -80,7 +83,7 @@ class _PantallaChatsState extends State<PantallaChats> {
               if (!mounted) return;
               setState(() {
                 _estado = _EstadoChatWeb.cargando;
-                _mensajeEstado = 'Cargando ${_proveedor.host}…';
+                _mensajeEstado = 'Cargando $_hostActual…';
               });
             },
             onPageFinished: (url) {
@@ -107,14 +110,14 @@ class _PantallaChatsState extends State<PantallaChats> {
           ),
         );
 
-      await controller.loadRequest(Uri.parse(_proveedor.url));
+      await controller.loadRequest(Uri.parse(_urlActual));
 
       if (!mounted) return;
       setState(() {
         _controller = controller;
         _webViewDisponible = true;
         _estado = _EstadoChatWeb.cargando;
-        _mensajeEstado = 'Cargando ${_proveedor.host}…';
+        _mensajeEstado = 'Cargando $_hostActual…';
       });
     } on Object catch (e) {
       if (!mounted) return;
@@ -133,7 +136,7 @@ class _PantallaChatsState extends State<PantallaChats> {
     setState(() {
       _proveedor = nuevo;
       _estado = _EstadoChatWeb.cargando;
-      _mensajeEstado = 'Cargando ${nuevo.host}…';
+      _mensajeEstado = 'Cargando $_hostActual…';
     });
 
     final controller = _controller;
@@ -143,7 +146,7 @@ class _PantallaChatsState extends State<PantallaChats> {
     }
 
     try {
-      await controller.loadRequest(Uri.parse(nuevo.url));
+      await controller.loadRequest(Uri.parse(_urlActual));
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
@@ -162,7 +165,7 @@ class _PantallaChatsState extends State<PantallaChats> {
 
     setState(() {
       _estado = _EstadoChatWeb.cargando;
-      _mensajeEstado = 'Cargando ${_proveedor.host}…';
+      _mensajeEstado = 'Cargando $_hostActual…';
     });
 
     try {
@@ -177,14 +180,36 @@ class _PantallaChatsState extends State<PantallaChats> {
   }
 
   Future<void> _abrirEnNavegador() async {
-    final uri = Uri.parse(_proveedor.url);
+    final uri = Uri.parse(_urlActual);
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo abrir ${_proveedor.url}'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo abrir $_urlActual')));
+    }
+  }
+
+  Future<void> _cargarHtmlPrueba() async {
+    final controller = _controller;
+    if (controller == null) return;
+
+    try {
+      await controller.loadHtmlString('''<!DOCTYPE html>
+<html><body style="margin:0;background:#ffffff;color:#000;font:24px sans-serif;padding:40px;">
+  <h1>WebView OK</h1>
+  <p>Si lees esto, el motor pinta dentro de Flutter.</p>
+</body></html>''');
+      if (!mounted) return;
+      setState(() {
+        _estado = _EstadoChatWeb.listo;
+        _mensajeEstado = 'HTML local cargado';
+      });
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _estado = _EstadoChatWeb.errorNavegacion;
+        _mensajeEstado = e.toString();
+      });
     }
   }
 
@@ -198,10 +223,7 @@ class _PantallaChatsState extends State<PantallaChats> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Chats',
-            style: textos.headlineSmall?.copyWith(fontSize: 26),
-          ),
+          Text('Chats', style: textos.headlineSmall?.copyWith(fontSize: 26)),
           const SizedBox(height: 6),
           Text(
             'ChatGPT y Grok sin salir de Duo. Experimento aislado — no forma parte de main.',
@@ -212,6 +234,7 @@ class _PantallaChatsState extends State<PantallaChats> {
             proveedor: _proveedor,
             alCambiar: _cambiarProveedor,
             alRecargar: _recargar,
+            alCargarHtmlPrueba: _cargarHtmlPrueba,
             alAbrirNavegador: _abrirEnNavegador,
             recargarHabilitado: _controller != null || !_webViewDisponible,
           ),
@@ -224,13 +247,15 @@ class _PantallaChatsState extends State<PantallaChats> {
               webViewDisponible: _webViewDisponible,
               alReintentar: _recargar,
               alAbrirNavegador: _abrirEnNavegador,
+              diagnostico: PantallaChats.kDiagnosticoWebView,
             ),
           ),
           const SizedBox(height: 10),
           _EstadoChatWebBarra(
             estado: _estado,
             mensaje: _mensajeEstado,
-            host: _proveedor.host,
+            host: _hostActual,
+            diagnostico: PantallaChats.kDiagnosticoWebView,
           ),
         ],
       ),
@@ -243,6 +268,7 @@ class _BarraChats extends StatelessWidget {
     required this.proveedor,
     required this.alCambiar,
     required this.alRecargar,
+    required this.alCargarHtmlPrueba,
     required this.alAbrirNavegador,
     required this.recargarHabilitado,
   });
@@ -250,6 +276,7 @@ class _BarraChats extends StatelessWidget {
   final _ProveedorChat proveedor;
   final ValueChanged<_ProveedorChat> alCambiar;
   final VoidCallback alRecargar;
+  final VoidCallback alCargarHtmlPrueba;
   final VoidCallback alAbrirNavegador;
   final bool recargarHabilitado;
 
@@ -259,16 +286,19 @@ class _BarraChats extends StatelessWidget {
 
     return Row(
       children: [
-        _SelectorProveedor(
-          seleccionado: proveedor,
-          alCambiar: alCambiar,
-        ),
+        _SelectorProveedor(seleccionado: proveedor, alCambiar: alCambiar),
         const Spacer(),
         IconButton(
           tooltip: 'Recargar página',
           onPressed: recargarHabilitado ? alRecargar : null,
           icon: Icon(Icons.refresh, size: 20, color: paleta.tintaSecundaria),
         ),
+        if (PantallaChats.kDiagnosticoWebView)
+          IconButton(
+            tooltip: 'Cargar HTML de prueba',
+            onPressed: recargarHabilitado ? alCargarHtmlPrueba : null,
+            icon: Icon(Icons.code, size: 20, color: paleta.tintaSecundaria),
+          ),
         const SizedBox(width: 4),
         TextButton.icon(
           onPressed: alAbrirNavegador,
@@ -335,7 +365,9 @@ class _ChipProveedor extends StatelessWidget {
     final textos = Theme.of(context).textTheme;
 
     return Material(
-      color: activo ? paleta.acento.withValues(alpha: 0.14) : Colors.transparent,
+      color: activo
+          ? paleta.acento.withValues(alpha: 0.14)
+          : Colors.transparent,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: alPulsar,
@@ -363,6 +395,7 @@ class _MarcoWebChat extends StatelessWidget {
     required this.webViewDisponible,
     required this.alReintentar,
     required this.alAbrirNavegador,
+    required this.diagnostico,
   });
 
   final WebViewController? controller;
@@ -371,30 +404,43 @@ class _MarcoWebChat extends StatelessWidget {
   final bool webViewDisponible;
   final VoidCallback alReintentar;
   final VoidCallback alAbrirNavegador;
+  final bool diagnostico;
 
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
 
+    final webView = controller != null && webViewDisponible
+        ? diagnostico
+              ? LayoutBuilder(
+                  builder: (context, constraints) {
+                    debugPrint('[Chats/WebView] constraints: $constraints');
+                    debugPrint('[Chats/WebView] estado: $estado');
+                    return WebViewWidget(controller: controller!);
+                  },
+                )
+              : WebViewWidget(controller: controller!)
+        : null;
+
     return Container(
       decoration: BoxDecoration(
-        color: paleta.panel,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: paleta.rejilla),
+        color: diagnostico ? Colors.white : paleta.panel,
+        borderRadius: diagnostico ? null : BorderRadius.circular(10),
+        border: diagnostico ? null : Border.all(color: paleta.rejilla),
       ),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: diagnostico ? Clip.none : Clip.antiAlias,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (controller != null && webViewDisponible)
-            WebViewWidget(controller: controller!),
+          ?webView,
           if (estado == _EstadoChatWeb.inicializando ||
               (estado == _EstadoChatWeb.cargando && controller == null))
             _CapaCarga(texto: mensaje ?? 'Preparando WebView…'),
           if (estado == _EstadoChatWeb.webViewNoDisponible)
             _CapaError(
               titulo: 'El WebView no está disponible',
-              detalle: mensaje ??
+              detalle:
+                  mensaje ??
                   'Duo no pudo iniciar el motor web de Linux. '
                       'Puedes seguir usando este servicio en tu navegador.',
               alReintentar: alReintentar,
@@ -403,15 +449,16 @@ class _MarcoWebChat extends StatelessWidget {
           if (estado == _EstadoChatWeb.errorNavegacion)
             _CapaError(
               titulo: 'No se pudo cargar la página',
-              detalle: mensaje ?? 'El WebView informó un error de red o de carga.',
+              detalle:
+                  mensaje ?? 'El WebView informó un error de red o de carga.',
               alReintentar: alReintentar,
               alAbrirNavegador: alAbrirNavegador,
             ),
           if (estado == _EstadoChatWeb.procesoTerminado)
             _CapaError(
               titulo: 'El contenido web dejó de responder',
-              detalle: mensaje ??
-                  'El proceso del WebView terminó inesperadamente.',
+              detalle:
+                  mensaje ?? 'El proceso del WebView terminó inesperadamente.',
               alReintentar: alReintentar,
               alAbrirNavegador: alAbrirNavegador,
             ),
@@ -532,11 +579,13 @@ class _EstadoChatWebBarra extends StatelessWidget {
     required this.estado,
     required this.mensaje,
     required this.host,
+    required this.diagnostico,
   });
 
   final _EstadoChatWeb estado;
   final String? mensaje;
   final String host;
+  final bool diagnostico;
 
   @override
   Widget build(BuildContext context) {
@@ -545,49 +594,50 @@ class _EstadoChatWebBarra extends StatelessWidget {
 
     final (Color color, String texto, IconData icono) = switch (estado) {
       _EstadoChatWeb.inicializando => (
-          paleta.acentoAlt,
-          mensaje ?? 'Preparando WebView…',
-          Icons.hourglass_top,
-        ),
+        paleta.acentoAlt,
+        mensaje ?? 'Preparando WebView…',
+        Icons.hourglass_top,
+      ),
       _EstadoChatWeb.cargando => (
-          paleta.acentoAlt,
-          mensaje ?? 'Cargando $host…',
-          Icons.circle,
-        ),
+        paleta.acentoAlt,
+        mensaje ?? 'Cargando $host…',
+        Icons.circle,
+      ),
       _EstadoChatWeb.listo => (
-          paleta.bien,
-          mensaje ?? 'Página lista',
-          Icons.check_circle_outline,
-        ),
+        paleta.bien,
+        mensaje ?? 'Página lista',
+        Icons.check_circle_outline,
+      ),
       _EstadoChatWeb.errorNavegacion => (
-          paleta.grave,
-          mensaje ?? 'No se pudo cargar la página',
-          Icons.error_outline,
-        ),
+        paleta.grave,
+        mensaje ?? 'No se pudo cargar la página',
+        Icons.error_outline,
+      ),
       _EstadoChatWeb.webViewNoDisponible => (
-          paleta.critico,
-          mensaje ?? 'WebView no disponible',
-          Icons.warning_amber_rounded,
-        ),
+        paleta.critico,
+        mensaje ?? 'WebView no disponible',
+        Icons.warning_amber_rounded,
+      ),
       _EstadoChatWeb.procesoTerminado => (
-          paleta.grave,
-          mensaje ?? 'El proceso web terminó',
-          Icons.report_gmailerrorred_outlined,
-        ),
+        paleta.grave,
+        mensaje ?? 'El proceso web terminó',
+        Icons.report_gmailerrorred_outlined,
+      ),
       _EstadoChatWeb.requiereNavegadorExterno => (
-          paleta.aviso,
-          mensaje ?? 'Se necesita el navegador del sistema',
-          Icons.open_in_new,
-        ),
+        paleta.aviso,
+        mensaje ?? 'Se necesita el navegador del sistema',
+        Icons.open_in_new,
+      ),
     };
 
+    final textoEstado = diagnostico ? '$texto · diagnóstico' : texto;
     return Row(
       children: [
         Icon(icono, size: 14, color: color),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            texto,
+            textoEstado,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: textos.bodySmall?.copyWith(color: color),
