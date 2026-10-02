@@ -191,16 +191,15 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
-    // En GNU/Linux la salida de vídeo es una textura nativa. Aunque esté
-    // envuelta en IgnorePointer, algunos compositores pueden dejarla por
-    // delante de los controles al reconstruir la vista. Personalización es
-    // precisamente donde se elige la carpeta y se ajusta la opacidad, así que
-    // ahí priorizamos siempre la interacción. Al volver a cualquier otra
-    // sección, el mismo vídeo vuelve a pintarse como fondo.
-    final mostrarVideo =
+    // En GNU/Linux la salida de vídeo es una textura nativa. Personalización
+    // necesita prioridad absoluta de interacción, pero desmontar el player
+    // aquí deja algunos compositores sin una textura válida al reconstruir la
+    // página. Offstage lo saca de pintura y del hit testing sin destruirlo.
+    final ocultarVideoParaConfigurar =
+        destinos[_activo].nombre == 'Personalización';
+    final hayVideoSeleccionado =
         FondoVideoConfig.esModoVideo(_modoFondo) &&
-        _videoSeleccionado != null &&
-        destinos[_activo].nombre != 'Personalización';
+        _videoSeleccionado != null;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -208,11 +207,14 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
         fit: StackFit.expand,
         children: [
           _FondoBase(modo: _modoFondo),
-          if (mostrarVideo)
-            FondoVideoReproductor(
-              key: ValueKey(_videoSeleccionado),
-              ruta: _videoSeleccionado!,
-              alFallar: _videoFallo,
+          if (hayVideoSeleccionado)
+            Offstage(
+              offstage: ocultarVideoParaConfigurar,
+              child: FondoVideoReproductor(
+                key: ValueKey(_videoSeleccionado),
+                ruta: _videoSeleccionado!,
+                alFallar: _videoFallo,
+              ),
             ),
           Column(
             children: [
