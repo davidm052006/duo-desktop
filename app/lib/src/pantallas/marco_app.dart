@@ -136,10 +136,12 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
       });
       _seleccionarSiguiente();
 
-      _temporizadorFondo = Timer.periodic(
-        Duration(minutes: intervalo),
-        (_) => _seleccionarSiguiente(),
-      );
+      if (videos.isNotEmpty) {
+        _temporizadorFondo = Timer.periodic(
+          Duration(minutes: intervalo),
+          (_) => _seleccionarSiguiente(),
+        );
+      }
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
