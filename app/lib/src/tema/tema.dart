@@ -18,7 +18,7 @@ abstract final class TemaDuo {
     return ThemeData(
       useMaterial3: true,
       colorScheme: esquema,
-      scaffoldBackgroundColor: paleta.superficie,
+      scaffoldBackgroundColor: Colors.transparent,
       extensions: [paleta],
       textTheme: _texto(paleta),
       dividerTheme: DividerThemeData(color: paleta.rejilla, space: 1, thickness: 1),
