@@ -22,11 +22,13 @@ class AppDuo extends StatelessWidget {
     return ChangeNotifierProvider(
       // `arranca` hace la primera lectura y deja el sondeo en marcha.
       create: (_) => EstadoTablero()..arranca(),
-      child: MaterialApp(
+      child: ValueListenableBuilder<double>(
+        valueListenable: FondoVideoConfig.opacidadPaneles,
+        builder: (context, opacidadPaneles, _) => MaterialApp(
         title: 'duo',
         debugShowCheckedModeBanner: false,
-        theme: TemaDuo.claro(),
-        darkTheme: TemaDuo.oscuro(),
+        theme: TemaDuo.claro(opacidadPaneles: opacidadPaneles),
+        darkTheme: TemaDuo.oscuro(opacidadPaneles: opacidadPaneles),
         // El modo oscuro no es un reflejo del claro: tiene sus propios pasos de
         // color, validados contra la superficie oscura.
         //
@@ -35,6 +37,7 @@ class AppDuo extends StatelessWidget {
         // cosa de Personalización (Fase 7); el tema claro se queda listo.
         themeMode: ThemeMode.dark,
         home: const MarcoApp(),
+      ),
       ),
     );
   }
