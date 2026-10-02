@@ -275,16 +275,20 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
             const _Cabecera(),
             const SizedBox(height: 24),
             ?aviso,
+            // Esta pantalla ya vive dentro de un ListView. IntrinsicHeight
+            // intenta pedir la altura intrínseca de la lista de vídeos del
+            // panel Fondo, algo que un viewport desplazable no puede dar.
+            // Dejamos que cada columna calcule su propia altura: así la vista
+            // conserva el diseño de dos columnas sin bloquear el layout ni
+            // el hit testing de sus controles.
             if (dosColumnas)
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: apariencia),
-                    const SizedBox(width: 18),
-                    Expanded(child: fondo),
-                  ],
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: apariencia),
+                  const SizedBox(width: 18),
+                  Expanded(child: fondo),
+                ],
               )
             else ...[
               apariencia,
