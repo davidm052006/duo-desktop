@@ -2,7 +2,7 @@
 
 > **Rama:** `experiment/chats-webview`  
 > **Fecha de investigación:** 2026-10-02  
-> **Estado:** investigación terminada; falta validación ejecutando ChatGPT/Grok en hardware objetivo.
+> **Estado:** validación runtime en curso. `webview_flutter_linux` quedó bloqueado por conflicto de `meta`; `webview_all` compila y navega, pero el WebView queda transparente. Ver `NOTAS-IMPLEMENTACION.md`.
 
 ## Resumen ejecutivo
 
@@ -155,11 +155,50 @@ No usar únicamente la cifra del proceso Flutter. WebKit usa procesos auxiliares
 
 El objetivo no es perseguir una cifra artificialmente baja, sino comparar **delta de memoria atribuible al panel** entre candidatos bajo la misma sesión.
 
+## Hallazgo de implementación — 2026-10-02
+
+### webview_flutter_linux
+
+El primer intento con `webview_flutter` + `webview_flutter_linux` no llegó a runtime por conflicto de dependencias:
+
+```text
+Flutter SDK → meta 1.18.0
+webview_flutter_linux → hooks → record_use → meta ^1.19.0
+```
+
+La salida recomendada es **actualizar Flutter a una stable cuyo framework/tooling ya use meta 1.19.x** y repetir el spike. No se recomienda fijar `dependency_overrides: meta: ^1.19.0` como solución permanente.
+
+### webview_all
+
+Se probó `webview_all ^1.4.4` con WebKitGTK 4.1.
+
+Resultado:
+
+- compila;
+- la aplicación abre;
+- `onPageStarted` / `onPageFinished` funcionan;
+- la UI llega a “Página lista”;
+- el área del WebView permanece vacía/transparente;
+- el fondo de vídeo de Duo queda visible a través del panel.
+
+El síntoma apunta más a **presentación/composición WebKitGTK** que a navegación. La hipótesis prioritaria es incompatibilidad GPU/DMA-BUF/Wayland-NVIDIA o interacción con la superficie de vídeo de `media_kit`.
+
+Antes de abandonar `webview_all`, ejecutar la matriz de depuración de `NOTAS-IMPLEMENTACION.md`: página trivial, HTML local, vídeo desactivado, `WEBKIT_DISABLE_DMABUF_RENDERER=1`, X11, explicit-sync NVIDIA, clipping/tamaño y MiniBrowser.
+
+### siguiente candidato
+
+Si WebKitGTK funciona fuera de Flutter pero `webview_all` continúa transparente, probar **`flutter_inappwebview` + backend Linux/WPE** manteniendo la misma UI de `PantallaChats` y sustituyendo únicamente la capa de navegador.
+
 ## Decisión del spike
 
-**Decisión de investigación: GO para prototipo con `webview_flutter_linux` + WPE WebKit del sistema.**
+**Decisión actual: continuar priorizando WebView embebido.**
 
-La decisión es provisional hasta completar la validación runtime. Si falla por una limitación del wrapper y no del propio WPE/WebKit, probar `flutter_inappwebview_linux`. Si ambos fallan por compatibilidad del sitio, conservar el fallback a navegador del sistema antes de considerar CEF.
+Orden:
+
+1. aislar el fallo de render de `webview_all`;
+2. si el wrapper queda señalado, migrar a `flutter_inappwebview_linux`/WPE;
+3. volver a probar `webview_flutter_linux` después de un upgrade controlado de Flutter compatible con `meta 1.19.x`;
+4. mantener navegador externo como fallback, no como solución principal del experimento.
 
 ## Fuentes consultadas
 
