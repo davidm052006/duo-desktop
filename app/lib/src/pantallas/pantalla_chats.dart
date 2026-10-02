@@ -19,7 +19,7 @@ class PantallaChats extends StatefulWidget {
 
 enum _ProveedorChat {
   chatgpt(nombre: 'ChatGPT', url: 'https://chatgpt.com', host: 'chatgpt.com'),
-  grok(nombre: 'Grok', url: 'https://grok.x.ai', host: 'grok.x.ai');
+  grok(nombre: 'Grok', url: 'https://grok.com', host: 'grok.com');
 
   const _ProveedorChat({
     required this.nombre,
