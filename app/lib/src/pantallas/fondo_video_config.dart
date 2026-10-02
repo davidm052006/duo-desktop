@@ -2,12 +2,22 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider_linux/path_provider_linux.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Preferencias y utilidades del fondo de vídeo.
 ///
 /// Vive temporalmente en pantallas porque T-023 restringe el territorio a
 /// app/lib/src/pantallas. No reproduce vídeo por sí mismo.
+class FalloPreferencias implements Exception {
+  const FalloPreferencias(this.mensaje);
+
+  final String mensaje;
+
+  @override
+  String toString() => mensaje;
+}
+
 abstract final class FondoVideoConfig {
   static final cambios = ValueNotifier<int>(0);
   static final opacidadPaneles = ValueNotifier<double>(0.88);
@@ -15,6 +25,9 @@ abstract final class FondoVideoConfig {
   static const carpetaKey = 'personalizacion.video.carpeta';
   static const intervaloKey = 'personalizacion.video.intervalo_minutos';
   static const opacidadPanelesKey = 'personalizacion.paneles.opacidad';
+  static const _bootstrapKey = 'duo.persistencia.inicializada';
+
+  static String? rutaArchivoPreferencias;
 
   static const extensiones = <String>{
     '.mp4',
@@ -31,6 +44,102 @@ abstract final class FondoVideoConfig {
 
   static double normalizarOpacidad(double? valor) =>
       (valor ?? 0.88).clamp(0.72, 0.98).toDouble();
+
+
+  static Future<void> inicializarPersistencia() async {
+    if (!Platform.isLinux) return;
+
+    try {
+      final soporte = await PathProviderLinux().getApplicationSupportPath();
+      if (soporte == null || soporte.trim().isEmpty) {
+        throw const FalloPreferencias(
+          'path_provider_linux no devolvió un directorio de soporte.',
+        );
+      }
+
+      final directorio = Directory(soporte);
+      await directorio.create(recursive: true);
+      final archivo = File(
+        '${directorio.path}${Platform.pathSeparator}shared_preferences.json',
+      );
+      rutaArchivoPreferencias = archivo.path;
+
+      final prefs = await SharedPreferences.getInstance();
+      final escrito = await prefs.setBool(_bootstrapKey, true);
+      _exigir(
+        escrito,
+        'crear el archivo de preferencias',
+      );
+
+      await prefs.reload();
+      if (prefs.getBool(_bootstrapKey) != true) {
+        throw FalloPreferencias(
+          'SharedPreferences escribió pero no pudo releer '
+          '${archivo.path}.',
+        );
+      }
+
+      if (!await archivo.exists()) {
+        throw FalloPreferencias(
+          'SharedPreferences no creó el archivo esperado: '
+          '${archivo.path}.',
+        );
+      }
+    } on FalloPreferencias {
+      rethrow;
+    } on Object catch (e) {
+      throw FalloPreferencias(
+        'No se pudo inicializar SharedPreferences en Linux: $e',
+      );
+    }
+  }
+
+  static Future<SharedPreferences> _preferencias() async {
+    try {
+      return await SharedPreferences.getInstance();
+    } on Object catch (e) {
+      throw FalloPreferencias(
+        'No se pudo abrir SharedPreferences'
+        '${rutaArchivoPreferencias == null ? '' : ' ($rutaArchivoPreferencias)'}: $e',
+      );
+    }
+  }
+
+  static void _exigir(bool ok, String accion) {
+    if (ok) return;
+    throw FalloPreferencias(
+      'SharedPreferences devolvió false al $accion'
+      '${rutaArchivoPreferencias == null ? '' : ' en $rutaArchivoPreferencias'}.',
+    );
+  }
+
+  static Future<void> guardarModoFondo(String valor) async {
+    final prefs = await _preferencias();
+    _exigir(
+      await prefs.setString(fondoKey, valor),
+      'guardar el modo de fondo',
+    );
+    cambios.value++;
+  }
+
+  static Future<void> guardarVideo({
+    required String carpeta,
+    required int intervaloMinutos,
+  }) async {
+    final prefs = await _preferencias();
+    _exigir(
+      await prefs.setString(carpetaKey, carpeta),
+      'guardar la carpeta de vídeos',
+    );
+    _exigir(
+      await prefs.setInt(
+        intervaloKey,
+        normalizarIntervalo(intervaloMinutos),
+      ),
+      'guardar el intervalo de vídeo',
+    );
+    cambios.value++;
+  }
 
   static Future<void> cargarPreferenciasVisuales() async {
     try {
@@ -96,8 +205,11 @@ abstract final class FondoVideoConfig {
 
   static Future<void> guardarOpacidad(double valor) async {
     final opacidad = normalizarOpacidad(valor);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(opacidadPanelesKey, opacidad);
+    final prefs = await _preferencias();
+    _exigir(
+      await prefs.setDouble(opacidadPanelesKey, opacidad),
+      'guardar la opacidad de paneles',
+    );
     opacidadPaneles.value = opacidad;
   }
 
@@ -106,13 +218,11 @@ abstract final class FondoVideoConfig {
     required int intervaloMinutos,
     required double opacidadPaneles,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(carpetaKey, carpeta);
-    await prefs.setInt(intervaloKey, intervaloMinutos);
-    final opacidad = normalizarOpacidad(opacidadPaneles);
-    await prefs.setDouble(opacidadPanelesKey, opacidad);
-    FondoVideoConfig.opacidadPaneles.value = opacidad;
-    cambios.value++;
+    await guardarVideo(
+      carpeta: carpeta,
+      intervaloMinutos: intervaloMinutos,
+    );
+    await guardarOpacidad(opacidadPaneles);
   }
 }
 
