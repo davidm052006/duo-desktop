@@ -20,6 +20,13 @@ class TableroKanban extends StatefulWidget {
 
 class _TableroKanbanState extends State<TableroKanban> {
   Tarea? _seleccionada;
+  final _desplazamientoHorizontal = ScrollController();
+
+  @override
+  void dispose() {
+    _desplazamientoHorizontal.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant TableroKanban oldWidget) {
@@ -37,14 +44,6 @@ class _TableroKanbanState extends State<TableroKanban> {
 
     return LayoutBuilder(
       builder: (context, limites) {
-        final inspectorVisible = _seleccionada != null;
-        final anchoInspector = inspectorVisible ? 360.0 : 0.0;
-        final huecoInspector = inspectorVisible ? 16.0 : 0.0;
-        final anchoDisponible =
-            (limites.maxWidth - anchoInspector - huecoInspector)
-                .clamp(320.0, double.infinity)
-                .toDouble();
-
         final columnas = [
           for (final definicion in _columnas)
             _ColumnaKanban(
@@ -57,12 +56,21 @@ class _TableroKanbanState extends State<TableroKanban> {
             ),
         ];
 
-        final anchoTablero =
-            anchoDisponible > 1192 ? anchoDisponible : 1192.0;
+        // Las cuatro columnas necesitan una anchura mínima legible. El
+        // controlador explícito evita que el Scrollbar se enlace al scroll
+        // vertical primario en lugar de al desplazamiento del tablero.
+        final anchoTablero = limites.maxWidth > 1192 ? limites.maxWidth : 1192.0;
 
         final tablero = Scrollbar(
+          controller: _desplazamientoHorizontal,
+          thumbVisibility: true,
+          trackVisibility: true,
+          interactive: true,
+          scrollbarOrientation: ScrollbarOrientation.bottom,
           child: SingleChildScrollView(
+            controller: _desplazamientoHorizontal,
             scrollDirection: Axis.horizontal,
+            primary: false,
             child: SizedBox(
               width: anchoTablero,
               child: Row(
@@ -78,20 +86,15 @@ class _TableroKanbanState extends State<TableroKanban> {
           ),
         );
 
-        if (!inspectorVisible) return tablero;
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        return Stack(
+          fit: StackFit.expand,
           children: [
-            Expanded(child: tablero),
-            const SizedBox(width: 16),
-            SizedBox(
-              width: anchoInspector,
-              child: _InspectorTarea(
+            tablero,
+            if (_seleccionada != null)
+              _DialogoInspector(
                 tarea: _seleccionada!,
                 alCerrar: () => setState(() => _seleccionada = null),
               ),
-            ),
           ],
         );
       },
@@ -307,6 +310,44 @@ class _TarjetaTarea extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Inspector modal de la referencia "tablero kanban 2". Mantiene el tablero
+/// visible detrás para conservar el contexto de la tarjeta seleccionada.
+class _DialogoInspector extends StatelessWidget {
+  const _DialogoInspector({required this.tarea, required this.alCerrar});
+
+  final Tarea tarea;
+  final VoidCallback alCerrar;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: alCerrar,
+                child: ColoredBox(color: Colors.black.withValues(alpha: .68)),
+              ),
+            ),
+            Center(
+              child: LayoutBuilder(
+                builder: (context, limites) => ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 850,
+                    maxHeight: (limites.maxHeight - 48).clamp(300, 760),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: _InspectorTarea(tarea: tarea, alCerrar: alCerrar),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _InspectorTarea extends StatelessWidget {

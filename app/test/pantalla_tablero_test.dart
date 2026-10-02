@@ -105,6 +105,25 @@ void main() {
 
     expect(find.text('INSPECTOR DE TAREA'), findsOneWidget);
     expect(find.byTooltip('Cerrar inspector'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Cerrar inspector'));
+    await tester.pumpAndSettle();
+    expect(find.text('INSPECTOR DE TAREA'), findsNothing);
+  });
+
+  testWidgets('la barra horizontal del Kanban es visible y arrastrable', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(700, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final estado = await _estadoCon((_) async => http.Response(_tablero, 200));
+    await tester.pumpWidget(_app(estado));
+
+    final barra = tester.widget<Scrollbar>(find.byType(Scrollbar));
+    expect(barra.thumbVisibility, isTrue);
+    expect(barra.trackVisibility, isTrue);
+    expect(barra.interactive, isTrue);
+    expect(barra.scrollbarOrientation, ScrollbarOrientation.bottom);
   });
 
   testWidgets('cada barra de carga lleva su cifra escrita al lado', (
