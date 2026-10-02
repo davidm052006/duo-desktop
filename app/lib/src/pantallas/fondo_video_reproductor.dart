@@ -51,7 +51,7 @@ class _FondoVideoReproductorState extends State<FondoVideoReproductor> {
     try {
       await _player.setVolume(0);
       await _player.setPlaylistMode(PlaylistMode.single);
-      await _player.open(Media(ruta), play: true);
+      await _player.open(Media(Uri.file(ruta).toString()), play: true);
     } on Object catch (e) {
       _notificarFallo('No se pudo abrir el vídeo: $e');
     }
