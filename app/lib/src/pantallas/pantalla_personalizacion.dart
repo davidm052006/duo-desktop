@@ -52,8 +52,8 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
     if (prefs == null) {
       setState(() {
         _cargando = false;
-        _fallo = 'No pude leer tus preferencias guardadas. '
-            'Puedes cambiarlas, pero no se recordarán al reiniciar.';
+        _fallo = FondoVideoConfig.falloInicializacion ??
+            'No pude leer tus preferencias guardadas.';
       });
       return;
     }
@@ -71,6 +71,7 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
       _opacidadPaneles = FondoVideoConfig.normalizarOpacidad(
         guardadas.getDouble(FondoVideoConfig.opacidadPanelesKey),
       );
+      _fallo = FondoVideoConfig.falloInicializacion;
       _cargando = false;
     });
     await _refrescarVideos();
@@ -482,7 +483,6 @@ class _Fondo extends StatelessWidget {
   });
 
   final String fondo;
-  final bool persistenciaOk;
   final String carpetaVideo;
   final int intervaloVideo;
   final double opacidadPaneles;
@@ -693,6 +693,7 @@ class _VistaPrevia extends StatelessWidget {
   final String acento;
   final double escalaTexto;
   final String fondo;
+  final bool persistenciaOk;
 
   Color get colorAcento => switch (acento) {
         'morado' => const Color(0xFFB388FF),
