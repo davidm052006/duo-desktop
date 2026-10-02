@@ -28,6 +28,7 @@ abstract final class FondoVideoConfig {
   static const _bootstrapKey = 'duo.persistencia.inicializada';
 
   static String? rutaArchivoPreferencias;
+  static String? falloInicializacion;
 
   static const extensiones = <String>{
     '.mp4',
