@@ -75,12 +75,14 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    FondoVideoConfig.cambios.addListener(_cargarRotacionFondo);
     _cargarRotacionFondo();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    FondoVideoConfig.cambios.removeListener(_cargarRotacionFondo);
     _temporizadorFondo?.cancel();
     super.dispose();
   }
