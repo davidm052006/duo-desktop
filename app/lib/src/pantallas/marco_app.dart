@@ -191,6 +191,16 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
+    // En GNU/Linux la salida de vídeo es una textura nativa. Aunque esté
+    // envuelta en IgnorePointer, algunos compositores pueden dejarla por
+    // delante de los controles al reconstruir la vista. Personalización es
+    // precisamente donde se elige la carpeta y se ajusta la opacidad, así que
+    // ahí priorizamos siempre la interacción. Al volver a cualquier otra
+    // sección, el mismo vídeo vuelve a pintarse como fondo.
+    final mostrarVideo =
+        FondoVideoConfig.esModoVideo(_modoFondo) &&
+        _videoSeleccionado != null &&
+        destinos[_activo].nombre != 'Personalización';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -198,8 +208,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
         fit: StackFit.expand,
         children: [
           _FondoBase(modo: _modoFondo),
-          if (FondoVideoConfig.esModoVideo(_modoFondo) &&
-              _videoSeleccionado != null)
+          if (mostrarVideo)
             FondoVideoReproductor(
               key: ValueKey(_videoSeleccionado),
               ruta: _videoSeleccionado!,
