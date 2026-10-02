@@ -428,7 +428,11 @@ class _MarcoWebChat extends StatelessWidget {
         borderRadius: diagnostico ? null : BorderRadius.circular(10),
         border: diagnostico ? null : Border.all(color: paleta.rejilla),
       ),
-      clipBehavior: diagnostico ? Clip.none : Clip.antiAlias,
+      // En Linux el WebView es un overlay GTK nativo. Un clip de Flutter
+      // (incluido Clip.antiAlias por las esquinas) no se puede representar en
+      // ese overlay y el plugin lo oculta por completo. Conservamos el borde
+      // decorativo, pero nunca recortamos el contenido web.
+      clipBehavior: Clip.none,
       child: Stack(
         fit: StackFit.expand,
         children: [
