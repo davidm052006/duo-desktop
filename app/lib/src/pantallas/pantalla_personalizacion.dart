@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
+import 'fondo_video_config.dart';
 
 class PantallaPersonalizacion extends StatefulWidget {
   const PantallaPersonalizacion({super.key});
@@ -15,7 +18,6 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   static const _temaKey = 'personalizacion.tema';
   static const _acentoKey = 'personalizacion.acento';
   static const _textoKey = 'personalizacion.escala_texto';
-  static const _fondoKey = 'personalizacion.fondo';
 
   bool _cargando = true;
   String? _fallo;
@@ -23,6 +25,11 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   String _acento = 'rosa';
   double _escalaTexto = 1.0;
   String _fondo = 'ninguno';
+  String _carpetaVideo = '';
+  int _intervaloVideo = 30;
+  double _opacidadPaneles = 0.88;
+  List<File> _videos = const [];
+  String? _estadoVideos;
 
   @override
   void initState() {
@@ -56,9 +63,17 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
       _acento = guardadas.getString(_acentoKey) ?? 'rosa';
       _escalaTexto =
           (guardadas.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30).toDouble();
-      _fondo = guardadas.getString(_fondoKey) ?? 'ninguno';
+      _fondo = guardadas.getString(FondoVideoConfig.fondoKey) ?? 'ninguno';
+      _carpetaVideo = guardadas.getString(FondoVideoConfig.carpetaKey) ?? '';
+      _intervaloVideo = FondoVideoConfig.normalizarIntervalo(
+        guardadas.getInt(FondoVideoConfig.intervaloKey),
+      );
+      _opacidadPaneles = FondoVideoConfig.normalizarOpacidad(
+        guardadas.getDouble(FondoVideoConfig.opacidadPanelesKey),
+      );
       _cargando = false;
     });
+    await _refrescarVideos();
   }
 
   Future<void> _guardarTema(String valor) async {
@@ -82,8 +97,69 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   Future<void> _guardarFondo(String valor) async {
     setState(() => _fondo = valor);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_fondoKey, valor);
+    await prefs.setString(FondoVideoConfig.fondoKey, valor);
+    FondoVideoConfig.cambios.value++;
   }
+
+
+  Future<void> _elegirCarpetaVideo() async {
+    final ruta = await FondoVideoConfig.elegirCarpeta(
+      context,
+      inicial: _carpetaVideo,
+    );
+    if (ruta == null || !mounted) return;
+
+    setState(() => _carpetaVideo = ruta);
+    await _persistirFondoVideo();
+    await _refrescarVideos();
+  }
+
+  Future<void> _refrescarVideos() async {
+    if (_carpetaVideo.trim().isEmpty) {
+      if (mounted) {
+        setState(() {
+          _videos = const [];
+          _estadoVideos = 'Elige una carpeta para buscar vídeos.';
+        });
+      }
+      return;
+    }
+
+    try {
+      final videos = await FondoVideoConfig.videosEn(_carpetaVideo);
+      if (!mounted) return;
+      setState(() {
+        _videos = videos;
+        _estadoVideos = videos.isEmpty
+            ? 'La carpeta no contiene vídeos con extensiones admitidas.'
+            : '${videos.length} vídeo(s) candidato(s).';
+      });
+    } on FileSystemException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _videos = const [];
+        _estadoVideos =
+            'No se puede leer la carpeta: ${e.osError?.message ?? e.message}';
+      });
+    }
+  }
+
+  Future<void> _guardarIntervalo(int valor) async {
+    setState(() => _intervaloVideo = valor);
+    await _persistirFondoVideo();
+  }
+
+  Future<void> _guardarOpacidad(double valor) async {
+    final opacidad = FondoVideoConfig.normalizarOpacidad(valor);
+    setState(() => _opacidadPaneles = opacidad);
+    await FondoVideoConfig.guardarOpacidad(opacidad);
+  }
+
+  Future<void> _persistirFondoVideo() => FondoVideoConfig.guardar(
+        carpeta: _carpetaVideo,
+        intervaloMinutos: _intervaloVideo,
+        opacidadPaneles: _opacidadPaneles,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +208,15 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
         );
         final fondo = _Fondo(
           fondo: _fondo,
+          carpetaVideo: _carpetaVideo,
+          intervaloVideo: _intervaloVideo,
+          opacidadPaneles: _opacidadPaneles,
+          videos: _videos,
+          estadoVideos: _estadoVideos,
           alCambiar: _guardarFondo,
+          alElegirCarpeta: _elegirCarpetaVideo,
+          alCambiarIntervalo: _guardarIntervalo,
+          alCambiarOpacidad: _guardarOpacidad,
         );
 
         return ListView(
@@ -334,15 +418,36 @@ class _Acento extends StatelessWidget {
 }
 
 class _Fondo extends StatelessWidget {
-  const _Fondo({required this.fondo, required this.alCambiar});
+  const _Fondo({
+    required this.fondo,
+    required this.carpetaVideo,
+    required this.intervaloVideo,
+    required this.opacidadPaneles,
+    required this.videos,
+    required this.estadoVideos,
+    required this.alCambiar,
+    required this.alElegirCarpeta,
+    required this.alCambiarIntervalo,
+    required this.alCambiarOpacidad,
+  });
 
   final String fondo;
+  final String carpetaVideo;
+  final int intervaloVideo;
+  final double opacidadPaneles;
+  final List<File> videos;
+  final String? estadoVideos;
   final ValueChanged<String> alCambiar;
+  final VoidCallback alElegirCarpeta;
+  final ValueChanged<int> alCambiarIntervalo;
+  final ValueChanged<double> alCambiarOpacidad;
 
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
     final textos = Theme.of(context).textTheme;
+    final muestraVideo = fondo == 'video';
+
     return Tarjeta(
       titulo: 'Fondo',
       icono: Icons.wallpaper_outlined,
@@ -354,7 +459,10 @@ class _Fondo extends StatelessWidget {
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             initialValue: fondo,
-            decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
             items: const [
               DropdownMenuItem(value: 'ninguno', child: Text('Sin fondo')),
               DropdownMenuItem(value: 'degradado', child: Text('Degradado')),
@@ -365,22 +473,150 @@ class _Fondo extends StatelessWidget {
               if (v != null) alCambiar(v);
             },
           ),
+          if (muestraVideo) ...[
+            const SizedBox(height: 20),
+            Text('CARPETA DE VÍDEOS', style: textos.labelSmall),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: paleta.rejilla),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Mono(
+                      carpetaVideo.isEmpty
+                          ? 'Ninguna carpeta seleccionada'
+                          : carpetaVideo,
+                      color: carpetaVideo.isEmpty
+                          ? paleta.tintaTenue
+                          : paleta.tintaSecundaria,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: alElegirCarpeta,
+                  icon: const Icon(Icons.folder_open_outlined, size: 16),
+                  label: const Text('Elegir'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  videos.isEmpty
+                      ? Icons.info_outline
+                      : Icons.video_library_outlined,
+                  size: 16,
+                  color: videos.isEmpty ? paleta.aviso : paleta.bien,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    estadoVideos ?? 'Buscando vídeos…',
+                    style: textos.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+            if (videos.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 120),
+                decoration: BoxDecoration(
+                  color: paleta.superficie.withValues(alpha: .45),
+                  border: Border.all(color: paleta.rejilla),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: videos.length,
+                  itemBuilder: (_, i) => Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                    child: Mono(
+                      videos[i].path.split(Platform.pathSeparator).last,
+                      color: paleta.tintaSecundaria,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            Text('CAMBIAR VÍDEO CADA', style: textos.labelSmall),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              initialValue: intervaloVideo,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: const [
+                DropdownMenuItem(value: 5, child: Text('5 minutos')),
+                DropdownMenuItem(value: 15, child: Text('15 minutos')),
+                DropdownMenuItem(value: 30, child: Text('30 minutos')),
+                DropdownMenuItem(value: 60, child: Text('1 hora')),
+                DropdownMenuItem(value: 120, child: Text('2 horas')),
+              ],
+              onChanged: (v) {
+                if (v != null) alCambiarIntervalo(v);
+              },
+            ),
+          ],
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: Text('OPACIDAD DE PANELES', style: textos.labelSmall),
+              ),
+              Mono(
+                '${(opacidadPaneles * 100).round()}%',
+                color: paleta.acentoAlt,
+                peso: FontWeight.w600,
+              ),
+            ],
+          ),
+          Slider(
+            min: 0.72,
+            max: 0.98,
+            divisions: 13,
+            value: opacidadPaneles,
+            label: '${(opacidadPaneles * 100).round()}%',
+            onChanged: alCambiarOpacidad,
+          ),
+          Text(
+            'El rango 72–98% evita transparencias extremas que dañen la legibilidad.',
+            style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
+          ),
           const SizedBox(height: 18),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: paleta.acento.withValues(alpha: 0.07),
+              color: paleta.aviso.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: paleta.acento.withValues(alpha: 0.25)),
+              border: Border.all(color: paleta.aviso.withValues(alpha: 0.25)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.auto_awesome_outlined, size: 17, color: paleta.acento),
+                Icon(
+                  Icons.warning_amber_outlined,
+                  size: 17,
+                  color: paleta.aviso,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Imagen y vídeo quedan definidos como preferencias de UI. La selección de archivos y el render animado pueden conectarse después sin cambiar esta pantalla.',
+                    'Los vídeos se reproducen detrás de la interfaz con audio '
+                    'silenciado. Si un archivo falla al decodificar, Duo salta '
+                    'al siguiente candidato automáticamente.',
                     style: textos.bodySmall,
                   ),
                 ),

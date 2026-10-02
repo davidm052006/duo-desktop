@@ -5,8 +5,19 @@ import 'paleta.dart';
 /// El tema de la interfaz. La Fase 7 ("lo bonito") es donde esto crece; aquí
 /// solo se fija lo justo para que la app no parezca una plantilla.
 abstract final class TemaDuo {
-  static ThemeData claro() => _construye(Brightness.light, PaletaDatos.claro);
-  static ThemeData oscuro() => _construye(Brightness.dark, PaletaDatos.oscuro);
+  static ThemeData claro({double opacidadPaneles = 1.0}) => _construye(
+        Brightness.light,
+        PaletaDatos.claro.copyWith(
+          panel: PaletaDatos.claro.panel.withValues(alpha: opacidadPaneles),
+        ),
+      );
+
+  static ThemeData oscuro({double opacidadPaneles = 1.0}) => _construye(
+        Brightness.dark,
+        PaletaDatos.oscuro.copyWith(
+          panel: PaletaDatos.oscuro.panel.withValues(alpha: opacidadPaneles),
+        ),
+      );
 
   static ThemeData _construye(Brightness brillo, PaletaDatos paleta) {
     final esquema = ColorScheme.fromSeed(
@@ -18,12 +29,12 @@ abstract final class TemaDuo {
     return ThemeData(
       useMaterial3: true,
       colorScheme: esquema,
-      scaffoldBackgroundColor: paleta.superficie,
+      scaffoldBackgroundColor: Colors.transparent,
       extensions: [paleta],
       textTheme: _texto(paleta),
       dividerTheme: DividerThemeData(color: paleta.rejilla, space: 1, thickness: 1),
       appBarTheme: AppBarTheme(
-        backgroundColor: paleta.superficie,
+        backgroundColor: paleta.panel,
         surfaceTintColor: Colors.transparent,
         foregroundColor: paleta.tintaPrincipal,
         elevation: 0,

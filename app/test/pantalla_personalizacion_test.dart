@@ -84,6 +84,15 @@ Future<void> _pinta(
   await tester.pumpAndSettle();
 }
 
+
+Finder get _sliderTipografia => find.byWidgetPredicate(
+      (widget) => widget is Slider && widget.min == 0.85 && widget.max == 1.30,
+    );
+
+Finder get _sliderOpacidad => find.byWidgetPredicate(
+      (widget) => widget is Slider && widget.min == 0.72 && widget.max == 0.98,
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -131,7 +140,7 @@ void main() {
     // Las insignias de los paneles repiten el valor activo.
     expect(find.text('oscuro'), findsOneWidget);
     expect(find.text('ninguno'), findsOneWidget);
-    expect(tester.widget<Slider>(find.byType(Slider)).value, 1.0);
+    expect(tester.widget<Slider>(_sliderTipografia).value, 1.0);
   });
 
   testWidgets('lo guardado se recupera al abrir', (tester) async {
@@ -215,6 +224,36 @@ void main() {
     expect(tester.takeException(), isNull);
     // skip: fallo abierto; guardar con el almacén caído lanza sin capturar.
   }, skip: true);
+
+  testWidgets('la opacidad por defecto es segura y se persiste', (tester) async {
+    await _pinta(tester);
+
+    expect(tester.widget<Slider>(_sliderOpacidad).value, 0.88);
+
+    await tester.drag(_sliderOpacidad, const Offset(80, 0));
+    await tester.pumpAndSettle();
+
+    final guardada =
+        _almacen['${_prefijo}personalizacion.paneles.opacidad'] as double?;
+    expect(guardada, isNotNull);
+    expect(guardada!, inInclusiveRange(0.72, 0.98));
+  });
+
+  testWidgets('modo sin fondo no enseña controles de carpeta de video', (tester) async {
+    _guardadas({'personalizacion.fondo': 'ninguno'});
+    await _pinta(tester);
+
+    expect(find.text('CARPETA DE VÍDEOS'), findsNothing);
+    expect(find.text('CAMBIAR VÍDEO CADA'), findsNothing);
+  });
+
+  testWidgets('modo video enseña carpeta e intervalo', (tester) async {
+    _guardadas({'personalizacion.fondo': 'video'});
+    await _pinta(tester);
+
+    expect(find.text('CARPETA DE VÍDEOS'), findsOneWidget);
+    expect(find.text('CAMBIAR VÍDEO CADA'), findsOneWidget);
+  });
 
   testWidgets('con el almacén sano no se avisa de nada', (tester) async {
     await _pinta(tester);
