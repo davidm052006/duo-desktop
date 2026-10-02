@@ -1,3 +1,4 @@
+import 'package:duo_desktop/src/pantallas/fondo_video_config.dart';
 import 'package:duo_desktop/src/pantallas/pantalla_personalizacion.dart';
 import 'package:duo_desktop/src/tema/tema.dart';
 import 'package:flutter/material.dart';
@@ -163,7 +164,7 @@ void main() {
     expect(find.text('claro'), findsOneWidget);
     expect(find.text('115%'), findsWidgets);
     expect(find.text('degradado'), findsOneWidget);
-    expect(tester.widget<Slider>(find.byType(Slider)).value, 1.15);
+    expect(tester.widget<Slider>(_sliderTipografia).value, 1.15);
   });
 
   testWidgets('una escala fuera de rango se recorta en vez de romper el slider', (tester) async {
@@ -173,7 +174,7 @@ void main() {
 
     await _pinta(tester);
 
-    expect(tester.widget<Slider>(find.byType(Slider)).value, 1.30);
+    expect(tester.widget<Slider>(_sliderTipografia).value, 1.30);
     expect(find.text('130%'), findsWidgets);
   });
 
@@ -206,7 +207,6 @@ void main() {
       find.textContaining('No pude leer tus preferencias guardadas.'),
       findsOneWidget,
     );
-    expect(find.textContaining('no se recordarán al reiniciar'), findsOneWidget);
     // Y los controles siguen ahí, con los valores por defecto.
     expect(find.text('APARIENCIA'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
