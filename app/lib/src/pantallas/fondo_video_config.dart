@@ -191,8 +191,11 @@ class _SelectorCarpetaState extends State<_SelectorCarpeta> {
                           itemCount: _subdirectorios.length,
                           itemBuilder: (_, i) {
                             final d = _subdirectorios[i];
-                            final partes = d.path.split(Platform.pathSeparator);
-                            final nombre = partes.where((e) => e.isNotEmpty).lastOrNull ?? d.path;
+                            final partes = d.path
+                                .split(Platform.pathSeparator)
+                                .where((e) => e.isNotEmpty)
+                                .toList(growable: false);
+                            final nombre = partes.isEmpty ? d.path : partes.last;
                             return ListTile(
                               dense: true,
                               leading: const Icon(Icons.folder_outlined),
