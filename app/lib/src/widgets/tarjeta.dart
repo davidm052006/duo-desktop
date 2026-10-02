@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tema/paleta.dart';
+import '../pantallas/fondo_video_config.dart';
 
 /// El panel con el que está hecho el centro de control: un rectángulo con
 /// borde, un encabezado y lo que sea dentro.
@@ -30,14 +31,16 @@ class Tarjeta extends StatelessWidget {
   Widget build(BuildContext context) {
     final paleta = context.paleta;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: paleta.panel,
-        border: Border.all(color: paleta.rejilla),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: relleno,
-      child: Column(
+    return ValueListenableBuilder<double>(
+      valueListenable: FondoVideoConfig.opacidadPaneles,
+      builder: (context, opacidad, _) => Container(
+        decoration: BoxDecoration(
+          color: paleta.panel.withValues(alpha: opacidad),
+          border: Border.all(color: paleta.rejilla),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: relleno,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -65,6 +68,7 @@ class Tarjeta extends StatelessWidget {
           ],
         ],
       ),
+    ),
     );
   }
 }
