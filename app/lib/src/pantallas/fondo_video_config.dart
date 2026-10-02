@@ -94,6 +94,13 @@ abstract final class FondoVideoConfig {
     );
   }
 
+  static Future<void> guardarOpacidad(double valor) async {
+    final opacidad = normalizarOpacidad(valor);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(opacidadPanelesKey, opacidad);
+    opacidadPaneles.value = opacidad;
+  }
+
   static Future<void> guardar({
     required String carpeta,
     required int intervaloMinutos,
