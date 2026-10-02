@@ -212,3 +212,28 @@ No se debe asumir que una extensión válida implica que el codec interno sea re
 #### Opacidad de superficies
 
 La preferencia de opacidad se limita a 72–98%. Se aplica al color `panel` del tema, no al árbol completo con `Opacity`. Así texto, iconos y bordes mantienen opacidad completa y contraste mientras las cards, barras y paneles dejan ver el fondo.
+
+
+#### Persistencia en Linux
+
+Antes de la primera lectura, `main.dart` registra explícitamente:
+
+```dart
+PathProviderLinux.registerWith();
+SharedPreferencesLinux.registerWith();
+```
+
+Las dependencias `path_provider_linux` y `shared_preferences_linux` son directas en `pubspec.yaml`.
+
+Al arrancar, Duo Desktop:
+
+1. obtiene el application support path Linux;
+2. crea el directorio si no existe;
+3. escribe una clave de bootstrap;
+4. ejecuta `reload()`;
+5. relee esa clave;
+6. comprueba que existe `shared_preferences.json`.
+
+Con la configuración XDG por defecto de Linux, este archivo vive bajo `~/.local/share/<application-id>/shared_preferences.json`. Si `XDG_DATA_HOME` está definido, se respeta ese directorio.
+
+Cada escritura de modo de fondo, carpeta, intervalo y opacidad comprueba el `bool` devuelto por `SharedPreferences`. Un `false` se considera fallo real: la UI muestra el error y no marca la preferencia como persistida. El cambio de modo se notifica a `MarcoApp` únicamente después de que la escritura haya tenido éxito.

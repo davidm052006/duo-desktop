@@ -5,6 +5,7 @@ import 'package:duo_desktop/src/pantallas/fondo_video_config.dart';
 import 'package:duo_desktop/src/tema/paleta.dart';
 import 'package:duo_desktop/src/tema/tema.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('seleccion aleatoria excluye el video actual y los fallidos', () {
@@ -22,6 +23,17 @@ void main() {
     );
 
     expect(elegido?.path, '/tmp/c.mp4');
+  });
+
+  test('guardar modo video notifica solo después de persistir', () async {
+    SharedPreferences.setMockInitialValues({});
+    final antes = FondoVideoConfig.cambios.value;
+
+    await FondoVideoConfig.guardarModoFondo('video');
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(FondoVideoConfig.fondoKey), 'video');
+    expect(FondoVideoConfig.cambios.value, greaterThan(antes));
   });
 
   test('intervalo solo acepta las opciones soportadas', () {
