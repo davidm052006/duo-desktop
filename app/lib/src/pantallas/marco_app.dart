@@ -295,7 +295,7 @@ class _BarraMarca extends StatelessWidget {
       valueListenable: FondoVideoConfig.opacidadPaneles,
       builder: (context, opacidad, _) => Container(
         height: 56,
-        color: paleta.panel.withValues(alpha: opacidad),
+        color: paleta.panel,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(
           children: [
@@ -402,7 +402,7 @@ class _BarraLateral extends StatelessWidget {
       valueListenable: FondoVideoConfig.opacidadPaneles,
       builder: (context, opacidad, _) => Container(
         width: 236,
-        color: paleta.panel.withValues(alpha: opacidad),
+        color: paleta.panel,
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
