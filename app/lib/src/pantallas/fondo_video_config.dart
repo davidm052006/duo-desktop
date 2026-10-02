@@ -67,7 +67,7 @@ abstract final class FondoVideoConfig {
     List<File> videos, {
     Random? random,
     String? excluirRuta,
-    Set<String> excluirRutas = const {},
+    Set<String> excluirRutas = const <String>{},
   }) {
     final candidatos = videos
         .where(
