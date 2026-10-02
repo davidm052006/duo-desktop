@@ -33,10 +33,15 @@ abstract final class FondoVideoConfig {
       (valor ?? 0.88).clamp(0.72, 0.98).toDouble();
 
   static Future<void> cargarPreferenciasVisuales() async {
-    final prefs = await SharedPreferences.getInstance();
-    opacidadPaneles.value = normalizarOpacidad(
-      prefs.getDouble(opacidadPanelesKey),
-    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      opacidadPaneles.value = normalizarOpacidad(
+        prefs.getDouble(opacidadPanelesKey),
+      );
+    } on Object catch (e) {
+      debugPrint('FondoVideoConfig: no pude cargar preferencias visuales ($e)');
+      opacidadPaneles.value = 0.88;
+    }
   }
 
   static Future<List<File>> videosEn(String ruta) async {
