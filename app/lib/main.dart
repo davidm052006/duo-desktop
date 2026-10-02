@@ -20,24 +20,17 @@ class AppDuo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      // `arranca` hace la primera lectura y deja el sondeo en marcha.
       create: (_) => EstadoTablero()..arranca(),
       child: ValueListenableBuilder<double>(
         valueListenable: FondoVideoConfig.opacidadPaneles,
         builder: (context, opacidadPaneles, _) => MaterialApp(
-        title: 'duo',
-        debugShowCheckedModeBanner: false,
-        theme: TemaDuo.claro(opacidadPaneles: opacidadPaneles),
-        darkTheme: TemaDuo.oscuro(opacidadPaneles: opacidadPaneles),
-        // El modo oscuro no es un reflejo del claro: tiene sus propios pasos de
-        // color, validados contra la superficie oscura.
-        //
-        // Los diseños de `docs/diseno/` fijan el tema oscuro, así que la app
-        // arranca en oscuro pase lo que pase en el escritorio. Elegir tema es
-        // cosa de Personalización (Fase 7); el tema claro se queda listo.
-        themeMode: ThemeMode.dark,
-        home: const MarcoApp(),
-      ),
+          title: 'duo',
+          debugShowCheckedModeBanner: false,
+          theme: TemaDuo.claro(opacidadPaneles: opacidadPaneles),
+          darkTheme: TemaDuo.oscuro(opacidadPaneles: opacidadPaneles),
+          themeMode: ThemeMode.dark,
+          home: const MarcoApp(),
+        ),
       ),
     );
   }
