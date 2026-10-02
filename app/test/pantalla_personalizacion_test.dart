@@ -20,10 +20,12 @@ const _prefijo = 'flutter.';
 
 late Map<String, Object> _almacen;
 late bool _almacenRoto;
+late String? _claveQueFalla;
 
 void _instalaAlmacen() {
   _almacen = {};
   _almacenRoto = false;
+  _claveQueFalla = null;
   SharedPreferences.resetStatic();
 
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -41,7 +43,9 @@ void _instalaAlmacen() {
           case 'getAll':
             return Map<String, Object>.from(_almacen);
           case 'setString' || 'setDouble' || 'setBool' || 'setInt' || 'setStringList':
-            _almacen[args['key']! as String] = args['value']!;
+            final key = args['key']! as String;
+            if (_claveQueFalla == key) return false;
+            _almacen[key] = args['value']!;
             return true;
           case 'remove':
             _almacen.remove(args['key']);
@@ -253,6 +257,46 @@ void main() {
 
     expect(find.text('CARPETA DE VÍDEOS'), findsOneWidget);
     expect(find.text('CAMBIAR VÍDEO CADA'), findsOneWidget);
+  });
+
+  testWidgets('si guardar el modo falla se muestra el error y no dice persistido',
+      (tester) async {
+    _claveQueFalla = '${_prefijo}personalizacion.fondo';
+    await _pinta(tester);
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vídeo').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('SharedPreferences devolvió false'),
+      findsOneWidget,
+    );
+    expect(find.text('sin guardar'), findsOneWidget);
+    expect(find.text('CARPETA DE VÍDEOS'), findsNothing);
+    expect(
+      _almacen.containsKey('${_prefijo}personalizacion.fondo'),
+      isFalse,
+    );
+  });
+
+  testWidgets('cambiar a video notifica a MarcoApp tras persistir',
+      (tester) async {
+    final antes = FondoVideoConfig.cambios.value;
+    await _pinta(tester);
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vídeo').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      _almacen['${_prefijo}personalizacion.fondo'],
+      'video',
+    );
+    expect(FondoVideoConfig.cambios.value, greaterThan(antes));
+    expect(find.text('CARPETA DE VÍDEOS'), findsOneWidget);
   });
 
   testWidgets('con el almacén sano no se avisa de nada', (tester) async {
