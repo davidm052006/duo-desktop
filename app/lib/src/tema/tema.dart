@@ -34,7 +34,7 @@ abstract final class TemaDuo {
       textTheme: _texto(paleta),
       dividerTheme: DividerThemeData(color: paleta.rejilla, space: 1, thickness: 1),
       appBarTheme: AppBarTheme(
-        backgroundColor: paleta.superficie,
+        backgroundColor: paleta.panel,
         surfaceTintColor: Colors.transparent,
         foregroundColor: paleta.tintaPrincipal,
         elevation: 0,
