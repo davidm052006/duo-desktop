@@ -191,15 +191,6 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final paleta = context.paleta;
-    // En GNU/Linux la salida de vídeo es una textura nativa. Personalización
-    // necesita prioridad absoluta de interacción, pero desmontar el player
-    // aquí deja algunos compositores sin una textura válida al reconstruir la
-    // página. Offstage lo saca de pintura y del hit testing sin destruirlo.
-    final ocultarVideoParaConfigurar =
-        destinos[_activo].nombre == 'Personalización';
-    final hayVideoSeleccionado =
-        FondoVideoConfig.esModoVideo(_modoFondo) &&
-        _videoSeleccionado != null;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -207,14 +198,12 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
         fit: StackFit.expand,
         children: [
           _FondoBase(modo: _modoFondo),
-          if (hayVideoSeleccionado)
-            Offstage(
-              offstage: ocultarVideoParaConfigurar,
-              child: FondoVideoReproductor(
-                key: ValueKey(_videoSeleccionado),
-                ruta: _videoSeleccionado!,
-                alFallar: _videoFallo,
-              ),
+          if (FondoVideoConfig.esModoVideo(_modoFondo) &&
+              _videoSeleccionado != null)
+            FondoVideoReproductor(
+              key: ValueKey(_videoSeleccionado),
+              ruta: _videoSeleccionado!,
+              alFallar: _videoFallo,
             ),
           Column(
             children: [
