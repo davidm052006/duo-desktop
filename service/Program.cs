@@ -6,11 +6,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<DuoProjectLocator>();
 builder.Services.AddSingleton<BoardReader>();
+builder.Services.AddSingleton<QuestionReader>();
+builder.Services.AddSingleton<LiveEventStream>();
 builder.Services.AddSingleton<HistoryReader>();
 builder.Services.AddSingleton<GitHubReader>();
 builder.Services.AddSingleton<DuoCommandRunner>();
 
 var app = builder.Build();
+app.UseWebSockets();
 
 // El token lo pasa quien arranca el servicio (scripts/dev.fish, o Flutter
 // cuando lo lance como proceso hijo). Sin él, cualquier proceso de la máquina
@@ -63,6 +66,54 @@ app.MapGet("/history", (HttpContext ctx, HistoryReader reader, ILogger<Program> 
     {
         log.LogError(e, "GET /history → 500 inesperado");
         return Error(500, "board_read_failed", "No se pudo leer el historial del proyecto activo.");
+    }
+});
+
+app.MapGet("/questions", (HttpContext ctx, QuestionReader reader, ILogger<Program> log) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(reader.Read());
+    }
+    catch (BoardException e)
+    {
+        log.LogWarning("GET /questions → {Status} {Code}: {Detail}", e.Status, e.Code, e.Detail);
+        return Error(e.Status, e.Code, e.Message);
+    }
+    catch (Exception e)
+    {
+        log.LogError(e, "GET /questions → 500 inesperado");
+        return Error(500, "questions_read_failed", "No se pudieron leer las preguntas del proyecto activo.");
+    }
+});
+
+app.Map("/events", async (HttpContext ctx, LiveEventStream events, ILogger<Program> log) =>
+{
+    if (!Authorized(ctx, token))
+    {
+        await Error(401, "unauthorized", "Token local ausente o inválido.").ExecuteAsync(ctx);
+        return;
+    }
+    if (!ctx.WebSockets.IsWebSocketRequest)
+    {
+        await Error(400, "websocket_required", "Este endpoint requiere una conexión WebSocket.").ExecuteAsync(ctx);
+        return;
+    }
+
+    using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
+    try
+    {
+        await events.SendAsync(socket, ctx.RequestAborted);
+    }
+    catch (Exception e) when (e is BoardException or IOException or UnauthorizedAccessException)
+    {
+        log.LogWarning(e, "WebSocket /events terminó con un error de lectura");
+        if (socket.State == System.Net.WebSockets.WebSocketState.Open)
+            await socket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.InternalServerError,
+                "No se pudo leer el proyecto activo.", CancellationToken.None);
     }
 });
 

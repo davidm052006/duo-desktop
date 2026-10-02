@@ -61,3 +61,15 @@ public sealed record CreateTaskRequest(string? Text);
 public sealed record CreateTaskResponse(string Id);
 
 public sealed record AnswerQuestionRequest(string? Text);
+
+/// Pregunta pendiente tal como la dejó duo. Content conserva el Markdown
+/// completo para que el cliente pueda decidir cómo presentarlo.
+public sealed record QuestionDto(string Id, TaskDto Task, string Agent, string Content);
+
+public sealed record QuestionsResponse(IReadOnlyList<QuestionDto> Questions);
+
+/// Los mensajes de /events se discriminan por Type. Las propiedades se
+/// serializan en camelCase por la configuración predeterminada de ASP.NET.
+public sealed record AgentOutputEvent(string Type, string TaskId, string? Agent, string Text);
+
+public sealed record BoardEvent(string Type, BoardResponse Board);
