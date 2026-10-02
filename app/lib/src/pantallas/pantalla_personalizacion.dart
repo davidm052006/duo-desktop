@@ -18,7 +18,6 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   static const _temaKey = 'personalizacion.tema';
   static const _acentoKey = 'personalizacion.acento';
   static const _textoKey = 'personalizacion.escala_texto';
-  static const _fondoKey = 'personalizacion.fondo';
 
   bool _cargando = true;
   String? _fallo;
@@ -64,15 +63,14 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
       _acento = guardadas.getString(_acentoKey) ?? 'rosa';
       _escalaTexto =
           (guardadas.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30).toDouble();
-      _fondo = guardadas.getString(_fondoKey) ?? 'ninguno';
+      _fondo = guardadas.getString(FondoVideoConfig.fondoKey) ?? 'ninguno';
       _carpetaVideo = guardadas.getString(FondoVideoConfig.carpetaKey) ?? '';
-      final intervaloGuardado = guardadas.getInt(FondoVideoConfig.intervaloKey) ?? 30;
-      _intervaloVideo = const [5, 15, 30, 60, 120].contains(intervaloGuardado)
-          ? intervaloGuardado
-          : 30;
-      _opacidadPaneles = (guardadas.getDouble(FondoVideoConfig.opacidadPanelesKey) ?? 0.88)
-          .clamp(0.72, 0.98)
-          .toDouble();
+      _intervaloVideo = FondoVideoConfig.normalizarIntervalo(
+        guardadas.getInt(FondoVideoConfig.intervaloKey),
+      );
+      _opacidadPaneles = FondoVideoConfig.normalizarOpacidad(
+        guardadas.getDouble(FondoVideoConfig.opacidadPanelesKey),
+      );
       _cargando = false;
     });
     await _refrescarVideos();
@@ -99,7 +97,8 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   Future<void> _guardarFondo(String valor) async {
     setState(() => _fondo = valor);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_fondoKey, valor);
+    await prefs.setString(FondoVideoConfig.fondoKey, valor);
+    FondoVideoConfig.cambios.value++;
   }
 
 
@@ -614,10 +613,9 @@ class _Fondo extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'T-023 está restringida a app/lib/src/pantallas. '
-                    'La carpeta, intervalo y opacidad sí quedan persistidos; '
-                    'el playback Linux real y la aplicación global de opacidad '
-                    'requieren dependencias/tema fuera de este territorio.',
+                    'Los vídeos se reproducen detrás de la interfaz con audio '
+                    'silenciado. Si un archivo falla al decodificar, Duo salta '
+                    'al siguiente candidato automáticamente.',
                     style: textos.bodySmall,
                   ),
                 ),
