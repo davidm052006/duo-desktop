@@ -47,8 +47,8 @@ abstract final class FondoVideoConfig {
       (valor ?? 0.88).clamp(0.72, 0.98).toDouble();
 
 
-  static Future<void> inicializarPersistencia() async {
-    if (!Platform.isLinux) return;
+  static Future<bool> inicializarPersistencia() async {
+    if (!Platform.isLinux) return true;
 
     try {
       final soporte = await PathProviderLinux().getApplicationSupportPath();
@@ -66,32 +66,32 @@ abstract final class FondoVideoConfig {
       rutaArchivoPreferencias = archivo.path;
 
       final prefs = await SharedPreferences.getInstance();
-      final escrito = await prefs.setBool(_bootstrapKey, true);
       _exigir(
-        escrito,
+        await prefs.setBool(_bootstrapKey, true),
         'crear el archivo de preferencias',
       );
 
       await prefs.reload();
       if (prefs.getBool(_bootstrapKey) != true) {
         throw FalloPreferencias(
-          'SharedPreferences escribió pero no pudo releer '
-          '${archivo.path}.',
+          'SharedPreferences escribió pero no pudo releer ${archivo.path}.',
+        );
+      }
+      if (!await archivo.exists()) {
+        throw FalloPreferencias(
+          'SharedPreferences no creó el archivo esperado: ${archivo.path}.',
         );
       }
 
-      if (!await archivo.exists()) {
-        throw FalloPreferencias(
-          'SharedPreferences no creó el archivo esperado: '
-          '${archivo.path}.',
-        );
-      }
-    } on FalloPreferencias {
-      rethrow;
+      falloInicializacion = null;
+      return true;
     } on Object catch (e) {
-      throw FalloPreferencias(
-        'No se pudo inicializar SharedPreferences en Linux: $e',
-      );
+      final mensaje = e is FalloPreferencias
+          ? e.mensaje
+          : 'No se pudo inicializar SharedPreferences en Linux: $e';
+      falloInicializacion = mensaje;
+      debugPrint('FondoVideoConfig: $mensaje');
+      return false;
     }
   }
 
