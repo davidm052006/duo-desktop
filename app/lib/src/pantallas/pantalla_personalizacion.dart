@@ -150,8 +150,9 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
   }
 
   Future<void> _guardarOpacidad(double valor) async {
-    setState(() => _opacidadPaneles = valor);
-    await _persistirFondoVideo();
+    final opacidad = FondoVideoConfig.normalizarOpacidad(valor);
+    setState(() => _opacidadPaneles = opacidad);
+    await FondoVideoConfig.guardarOpacidad(opacidad);
   }
 
   Future<void> _persistirFondoVideo() => FondoVideoConfig.guardar(
