@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../tema/paleta.dart';
@@ -66,7 +66,10 @@ class _PantallaPersonalizacionState extends State<PantallaPersonalizacion> {
           (guardadas.getDouble(_textoKey) ?? 1.0).clamp(0.85, 1.30).toDouble();
       _fondo = guardadas.getString(_fondoKey) ?? 'ninguno';
       _carpetaVideo = guardadas.getString(FondoVideoConfig.carpetaKey) ?? '';
-      _intervaloVideo = guardadas.getInt(FondoVideoConfig.intervaloKey) ?? 30;
+      final intervaloGuardado = guardadas.getInt(FondoVideoConfig.intervaloKey) ?? 30;
+      _intervaloVideo = const [5, 15, 30, 60, 120].contains(intervaloGuardado)
+          ? intervaloGuardado
+          : 30;
       _opacidadPaneles = (guardadas.getDouble(FondoVideoConfig.opacidadPanelesKey) ?? 0.88)
           .clamp(0.72, 0.98)
           .toDouble();
