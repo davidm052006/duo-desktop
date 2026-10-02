@@ -2,11 +2,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:duo_desktop/src/config.dart';
+import 'package:duo_desktop/src/datos/cliente_duo.dart';
+import 'package:duo_desktop/src/estado/estado_tablero.dart';
 import 'package:duo_desktop/src/pantallas/pantalla_github.dart';
 import 'package:duo_desktop/src/tema/paleta.dart';
 import 'package:duo_desktop/src/tema/tema.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:provider/provider.dart';
 
 import 'soporte/http_falso.dart';
 
@@ -34,16 +39,38 @@ const _respuesta = {
   ],
 };
 
+/// La pantalla depende del tablero desde T-021: necesita la rama de la tarea
+/// para publicar y abrir el PR.
+Future<EstadoTablero> _estadoVacio() async {
+  final estado = EstadoTablero(
+    cliente: ClienteDuo(
+      config: const ConfigDuo(puerto: 5132, token: 'secreto'),
+      transporte: MockClient(
+        (_) async => http.Response('{"board":{"tasks":[]},"ledger":{"agents":[]}}', 200),
+      ),
+    ),
+  );
+  await estado.refresca();
+  return estado;
+}
+
 /// Una ventana de escritorio de verdad: los dos paneles reparten por ancho.
 Future<void> _pinta(WidgetTester tester, {Size tamano = const Size(1600, 1200)}) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
+  // T-021 añadió acciones que necesitan saber la tarea y su rama, así que la
+  // pantalla pasó a depender del estado del tablero.
+  final estado = await _estadoVacio();
+
   await tester.pumpWidget(
-    MaterialApp(
-      theme: TemaDuo.oscuro(),
-      home: const Scaffold(body: PantallaGitHub()),
+    ChangeNotifierProvider.value(
+      value: estado,
+      child: MaterialApp(
+        theme: TemaDuo.oscuro(),
+        home: const Scaffold(body: PantallaGitHub()),
+      ),
     ),
   );
   // La pantalla pide `/github` en `initState`: hasta que vuelve hay spinner.
@@ -58,9 +85,12 @@ void main() {
     HttpFalso.instala((_) => espera.future, addTearDown);
 
     await tester.pumpWidget(
-      MaterialApp(
-        theme: TemaDuo.oscuro(),
-        home: const Scaffold(body: PantallaGitHub()),
+      ChangeNotifierProvider.value(
+        value: await _estadoVacio(),
+        child: MaterialApp(
+          theme: TemaDuo.oscuro(),
+          home: const Scaffold(body: PantallaGitHub()),
+        ),
       ),
     );
     await tester.pump();
