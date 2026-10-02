@@ -104,7 +104,7 @@ class _PantallaPreguntasState extends State<PantallaPreguntas> {
   }
 
   _ServicioPreguntas get _servicio =>
-      _ServicioPreguntas(config: _config, http: _http);
+      _ServicioPreguntas(config: _config, cliente: _http);
 
   /// El botón de actualizar pide las dos cosas: las preguntas y el tablero del
   /// que sale el respaldo.
@@ -316,10 +316,10 @@ class _SinEndpoint implements Exception {
 /// pantalla. Cuando `GET /questions` entre en el contrato, esto se sube al
 /// cliente y la pantalla se queda solo con la UI.
 class _ServicioPreguntas {
-  const _ServicioPreguntas({required this.config, required this.http});
+  const _ServicioPreguntas({required this.config, required this.cliente});
 
   final ConfigDuo config;
-  final http.Client http;
+  final http.Client cliente;
 
   static const _espera = Duration(seconds: 5);
 
@@ -330,7 +330,7 @@ class _ServicioPreguntas {
 
   Future<List<_Pregunta>> preguntas() async {
     final respuesta = await _pide(
-      () => http.get(config.ruta('/questions'), headers: _cabeceras),
+      () => cliente.get(config.ruta('/questions'), headers: _cabeceras),
     );
 
     // 404/405/501: la ruta no está montada. 404 con cuerpo de error del
@@ -372,7 +372,7 @@ class _ServicioPreguntas {
 
   Future<void> responde({required String id, required String texto}) async {
     final respuesta = await _pide(
-      () => http.post(
+      () => cliente.post(
         config.ruta('/questions/${Uri.encodeComponent(id)}/answer'),
         headers: {..._cabeceras, 'Content-Type': 'application/json'},
         body: jsonEncode({'text': texto}),
