@@ -58,10 +58,21 @@ abstract final class FondoVideoConfig {
     return videos;
   }
 
-  static File? aleatorio(List<File> videos, {Random? random}) {
-    if (videos.isEmpty) return null;
+  static File? aleatorio(
+    List<File> videos, {
+    Random? random,
+    String? excluirRuta,
+    Set<String> excluirRutas = const {},
+  }) {
+    final candidatos = videos
+        .where(
+          (video) =>
+              video.path != excluirRuta && !excluirRutas.contains(video.path),
+        )
+        .toList(growable: false);
+    if (candidatos.isEmpty) return null;
     final r = random ?? Random.secure();
-    return videos[r.nextInt(videos.length)];
+    return candidatos[r.nextInt(candidatos.length)];
   }
 
   static Future<String?> elegirCarpeta(
