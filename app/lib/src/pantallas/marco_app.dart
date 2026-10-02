@@ -110,7 +110,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
 
       await _seleccionarAleatorio(carpeta);
       _temporizadorFondo = Timer.periodic(
-        Duration(minutes: intervalo.clamp(5, 120)),
+        Duration(minutes: intervalo.clamp(5, 120).toInt()),
         (_) => _seleccionarAleatorio(carpeta),
       );
     } catch (e) {
