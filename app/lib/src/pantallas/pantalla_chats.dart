@@ -11,7 +11,7 @@ class PantallaChats extends StatefulWidget {
 
   /// Interruptor temporal para aislar el problema de pintura del WebView en
   /// Linux. Debe quedar en `false` cuando termine el experimento.
-  static const bool kDiagnosticoWebView = true;
+  static const bool kDiagnosticoWebView = false;
 
   @override
   State<PantallaChats> createState() => _PantallaChatsState();
