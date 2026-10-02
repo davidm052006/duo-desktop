@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// app/lib/src/pantallas. No reproduce vídeo por sí mismo.
 abstract final class FondoVideoConfig {
   static final cambios = ValueNotifier<int>(0);
+  static final opacidadPaneles = ValueNotifier<double>(0.88);
+  static const fondoKey = 'personalizacion.fondo';
   static const carpetaKey = 'personalizacion.video.carpeta';
   static const intervaloKey = 'personalizacion.video.intervalo_minutos';
   static const opacidadPanelesKey = 'personalizacion.paneles.opacidad';
@@ -21,6 +23,21 @@ abstract final class FondoVideoConfig {
     '.webm',
     '.mkv',
   };
+
+  static bool esModoVideo(String? fondo) => fondo == 'video';
+
+  static int normalizarIntervalo(int? valor) =>
+      const [5, 15, 30, 60, 120].contains(valor) ? valor! : 30;
+
+  static double normalizarOpacidad(double? valor) =>
+      (valor ?? 0.88).clamp(0.72, 0.98).toDouble();
+
+  static Future<void> cargarPreferenciasVisuales() async {
+    final prefs = await SharedPreferences.getInstance();
+    opacidadPaneles.value = normalizarOpacidad(
+      prefs.getDouble(opacidadPanelesKey),
+    );
+  }
 
   static Future<List<File>> videosEn(String ruta) async {
     if (ruta.trim().isEmpty) return const [];
@@ -69,10 +86,9 @@ abstract final class FondoVideoConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(carpetaKey, carpeta);
     await prefs.setInt(intervaloKey, intervaloMinutos);
-    await prefs.setDouble(
-      opacidadPanelesKey,
-      opacidadPaneles.clamp(0.72, 0.98).toDouble(),
-    );
+    final opacidad = normalizarOpacidad(opacidadPaneles);
+    await prefs.setDouble(opacidadPanelesKey, opacidad);
+    FondoVideoConfig.opacidadPaneles.value = opacidad;
     cambios.value++;
   }
 }
