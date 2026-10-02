@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
 import '../estado/estado_tablero.dart';
@@ -15,6 +18,7 @@ import 'pantalla_tablero.dart';
 import 'pantalla_tareas.dart';
 import 'pantalla_terminal.dart';
 import 'pantalla_visualizaciones.dart';
+import 'fondo_video_config.dart';
 
 /// Un sitio al que ir desde la barra lateral.
 ///
@@ -61,15 +65,92 @@ class MarcoApp extends StatefulWidget {
   State<MarcoApp> createState() => _MarcoAppState();
 }
 
-class _MarcoAppState extends State<MarcoApp> {
+class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
   int _activo = 0;
+  Timer? _temporizadorFondo;
+  String? _videoSeleccionado;
+  String? _estadoFondoVideo;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _cargarRotacionFondo();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _temporizadorFondo?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _cargarRotacionFondo();
+    }
+  }
+
+  Future<void> _cargarRotacionFondo() async {
+    _temporizadorFondo?.cancel();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final carpeta = prefs.getString(FondoVideoConfig.carpetaKey) ?? '';
+      final intervalo = prefs.getInt(FondoVideoConfig.intervaloKey) ?? 30;
+      if (carpeta.trim().isEmpty) {
+        if (mounted) {
+          setState(() {
+            _videoSeleccionado = null;
+            _estadoFondoVideo = null;
+          });
+        }
+        return;
+      }
+
+      await _seleccionarAleatorio(carpeta);
+      _temporizadorFondo = Timer.periodic(
+        Duration(minutes: intervalo.clamp(5, 120)),
+        (_) => _seleccionarAleatorio(carpeta),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _videoSeleccionado = null;
+        _estadoFondoVideo = 'No se pudo preparar la rotación de vídeos: $e';
+      });
+    }
+  }
+
+  Future<void> _seleccionarAleatorio(String carpeta) async {
+    try {
+      final videos = await FondoVideoConfig.videosEn(carpeta);
+      final elegido = FondoVideoConfig.aleatorio(videos);
+      if (!mounted) return;
+      setState(() {
+        _videoSeleccionado = elegido?.path;
+        _estadoFondoVideo = videos.isEmpty
+            ? 'La carpeta de fondo no contiene vídeos válidos.'
+            : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _videoSeleccionado = null;
+        _estadoFondoVideo = 'No se puede leer la carpeta de vídeos: $e';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
-          const _BarraMarca(),
+          _BarraMarca(
+            videoSeleccionado: _videoSeleccionado,
+            estadoFondoVideo: _estadoFondoVideo,
+          ),
           Divider(height: 1, color: context.paleta.rejilla),
           Expanded(
             child: Row(
@@ -107,7 +188,10 @@ class _MarcoAppState extends State<MarcoApp> {
 }
 
 class _BarraMarca extends StatelessWidget {
-  const _BarraMarca();
+  const _BarraMarca({this.videoSeleccionado, this.estadoFondoVideo});
+
+  final String? videoSeleccionado;
+  final String? estadoFondoVideo;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +216,21 @@ class _BarraMarca extends StatelessWidget {
             Flexible(child: Insignia(repo, tono: paleta.tintaSecundaria, mono: true)),
           ],
           const Spacer(),
+          if (videoSeleccionado != null || estadoFondoVideo != null) ...[
+            Tooltip(
+              message: estadoFondoVideo ??
+                  'Vídeo elegido para el fondo: $videoSeleccionado\n'
+                      'Playback Linux pendiente de dependencia fuera de territorio.',
+              child: Icon(
+                estadoFondoVideo == null
+                    ? Icons.video_library_outlined
+                    : Icons.video_file_outlined,
+                size: 16,
+                color: estadoFondoVideo == null ? paleta.acentoAlt : paleta.aviso,
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           _Conexion(conectado: estado.tablero != null && !estado.obsoleto),
           const SizedBox(width: 12),
           const Row(
