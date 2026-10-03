@@ -240,7 +240,7 @@ static void invoke_channel_on_platform_thread(
     FlValue *arguments)
 {
   auto *invocation = new PlatformChannelInvocation{
-      FL_METHOD_CHANNEL(g_object_ref(channel)),
+      static_cast<FlMethodChannel *>(g_object_ref(channel)),
       method,
       arguments,
   };
@@ -303,7 +303,7 @@ static void webview_cef_plugin_handle_method_call(
   g_object_ref(method_call);
   self->m_plugin->HandleMethodCall(method, encodeArgs, [=](int ret, WValue *responseArgs){
     auto *response = new PlatformMethodResponse{
-        FL_METHOD_CALL(g_object_ref(method_call)),
+        static_cast<FlMethodCall *>(g_object_ref(method_call)),
         ret,
         responseArgs != nullptr ? encode_wavlue_to_flvalue(responseArgs) : nullptr,
     };
