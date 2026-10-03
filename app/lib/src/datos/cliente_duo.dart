@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config.dart';
+import '../modelos/evento_duo.dart';
 import '../modelos/tablero.dart';
 
 /// Un fallo que la UI puede mostrar sin inventarse nada.
@@ -78,6 +81,45 @@ class ClienteDuo {
     } on Object catch (e) {
       // Un 200 que no encaja con el contrato es un bug nuestro, no del usuario.
       throw FalloDuo('contrato_roto', 'La respuesta no encaja con el contrato: $e');
+    }
+  }
+
+  Stream<EventoDuo> eventos() async* {
+    IOWebSocketChannel? canal;
+
+    try {
+      canal = IOWebSocketChannel.connect(
+        _config.rutaWebSocket('/events'),
+        headers: _cabeceras,
+        pingInterval: const Duration(seconds: 20),
+      );
+
+      await canal.ready.timeout(_espera);
+
+      await for (final mensaje in canal.stream) {
+        final texto = switch (mensaje) {
+          String valor => valor,
+          List<int> bytes => utf8.decode(bytes),
+          _ => throw const FormatException('Frame WebSocket no soportado.'),
+        };
+
+        final dynamic decodificado = jsonDecode(texto);
+        if (decodificado is! Map) {
+          throw const FormatException('Evento WebSocket inválido.');
+        }
+
+        yield EventoDuo.desdeJson(decodificado.cast<String, dynamic>());
+      }
+    } on TimeoutException {
+      throw FalloDuo.sinServicio;
+    } on SocketException {
+      throw FalloDuo.sinServicio;
+    } on WebSocketChannelException catch (e) {
+      throw FalloDuo('websocket_failed', e.message ?? 'Falló la conexión WebSocket.');
+    } on FormatException catch (e) {
+      throw FalloDuo('evento_invalido', e.message);
+    } finally {
+      await canal?.sink.close();
     }
   }
 
