@@ -207,6 +207,92 @@ static WValue *encode_flvalue_to_wvalue(FlValue *args)
   }
 }
 
+struct PlatformChannelInvocation
+{
+  FlMethodChannel *channel;
+  std::string method;
+  FlValue *arguments;
+};
+
+static gboolean invoke_channel_on_platform_thread(gpointer user_data)
+{
+  auto *invocation = static_cast<PlatformChannelInvocation *>(user_data);
+  fl_method_channel_invoke_method(
+      invocation->channel,
+      invocation->method.c_str(),
+      invocation->arguments,
+      nullptr,
+      nullptr,
+      nullptr);
+
+  if (invocation->arguments != nullptr)
+  {
+    fl_value_unref(invocation->arguments);
+  }
+  g_object_unref(invocation->channel);
+  delete invocation;
+  return G_SOURCE_REMOVE;
+}
+
+static void invoke_channel_on_platform_thread(
+    FlMethodChannel *channel,
+    const std::string &method,
+    FlValue *arguments)
+{
+  auto *invocation = new PlatformChannelInvocation{
+      FL_METHOD_CHANNEL(g_object_ref(channel)),
+      method,
+      arguments,
+  };
+  g_main_context_invoke(
+      g_main_context_default(),
+      invoke_channel_on_platform_thread,
+      invocation);
+}
+
+struct PlatformMethodResponse
+{
+  FlMethodCall *method_call;
+  int result_code;
+  FlValue *response;
+};
+
+static gboolean respond_on_platform_thread(gpointer user_data)
+{
+  auto *response = static_cast<PlatformMethodResponse *>(user_data);
+
+  if (response->result_code > 0)
+  {
+    fl_method_call_respond_success(
+        response->method_call,
+        response->response,
+        nullptr);
+  }
+  else if (response->result_code < 0)
+  {
+    fl_method_call_respond_error(
+        response->method_call,
+        "error",
+        "error",
+        response->response,
+        nullptr);
+  }
+  else
+  {
+    fl_method_call_respond_not_implemented(
+        response->method_call,
+        nullptr);
+  }
+
+  if (response->response != nullptr)
+  {
+    fl_value_unref(response->response);
+  }
+  g_object_unref(response->method_call);
+  delete response;
+  return G_SOURCE_REMOVE;
+}
+
 // Called when a method call is received from Flutter.
 static void webview_cef_plugin_handle_method_call(
     WebviewCefPlugin *self,
@@ -216,16 +302,16 @@ static void webview_cef_plugin_handle_method_call(
   WValue *encodeArgs = encode_flvalue_to_wvalue(fl_method_call_get_args(method_call));
   g_object_ref(method_call);
   self->m_plugin->HandleMethodCall(method, encodeArgs, [=](int ret, WValue *responseArgs){
-    if (ret > 0){
-      fl_method_call_respond_success(method_call, encode_wavlue_to_flvalue(responseArgs), nullptr);
-    }
-    else if (ret < 0){
-      fl_method_call_respond_error(method_call, "error", "error", encode_wavlue_to_flvalue(responseArgs), nullptr);
-    }
-    else{
-      fl_method_call_respond_not_implemented(method_call, nullptr);
-    }
-    g_object_unref(method_call); 
+    auto *response = new PlatformMethodResponse{
+        FL_METHOD_CALL(g_object_ref(method_call)),
+        ret,
+        responseArgs != nullptr ? encode_wavlue_to_flvalue(responseArgs) : nullptr,
+    };
+    g_main_context_invoke(
+        g_main_context_default(),
+        respond_on_platform_thread,
+        response);
+    g_object_unref(method_call);
   });
   webview_value_unref(encodeArgs);
 }
@@ -276,9 +362,10 @@ void webview_cef_plugin_register_with_registrar(FlPluginRegistrar *registrar)
                                             g_object_unref);
 
   plugin->m_plugin->setInvokeMethodFunc([=](std::string method, WValue *arguments) {
-    FlValue *args = encode_wavlue_to_flvalue(arguments);
-    fl_method_channel_invoke_method(channel, method.c_str(), args, NULL, NULL, NULL);
-    fl_value_unref(args);
+    FlValue *args = arguments != nullptr
+        ? encode_wavlue_to_flvalue(arguments)
+        : nullptr;
+    invoke_channel_on_platform_thread(channel, method, args);
   });
 
   plugin->m_plugin->setCreateTextureFunc([=](){
