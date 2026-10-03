@@ -33,7 +33,7 @@ class PanelProveedoresCef extends StatelessWidget {
               ),
           ],
         ),
-        if (capaError != null) capaError!,
+        ?capaError,
       ],
     );
   }
