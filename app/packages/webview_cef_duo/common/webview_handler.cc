@@ -351,20 +351,29 @@ void WebviewHandler::changeSize(int browserId, float a_dpi, int w, int h)
     }
 }
 
-void WebviewHandler::cursorClick(int browserId, int x, int y, bool up)
+void WebviewHandler::cursorClick(int browserId, int x, int y, bool up, int buttons)
 {
     auto it = browser_map_.find(browserId);
     if (it != browser_map_.end()) {
         CefMouseEvent ev;
         ev.x = x;
         ev.y = y;
-        ev.modifiers = EVENTFLAG_LEFT_MOUSE_BUTTON;
+        CefBrowserHost::MouseButtonType button = MBT_LEFT;
+        if (buttons & 2) {
+            button = MBT_RIGHT;
+            ev.modifiers = EVENTFLAG_RIGHT_MOUSE_BUTTON;
+        } else if (buttons & 4) {
+            button = MBT_MIDDLE;
+            ev.modifiers = EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+        } else {
+            ev.modifiers = EVENTFLAG_LEFT_MOUSE_BUTTON;
+        }
         if(up && it->second.is_dragging) {
             it->second.browser->GetHost()->DragTargetDrop(ev);
             it->second.browser->GetHost()->DragSourceSystemDragEnded();
             it->second.is_dragging = false;
         } else {
-            it->second.browser->GetHost()->SendMouseClickEvent(ev, CefBrowserHost::MouseButtonType::MBT_LEFT, up, 1);
+            it->second.browser->GetHost()->SendMouseClickEvent(ev, button, up, 1);
         }
     }
 }

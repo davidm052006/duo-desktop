@@ -657,20 +657,23 @@ namespace webview_cef {
 	}
 	
 	int WebviewPlugin::cursorAction(WValue *args, std::string name) {
-		if (!args || webview_value_get_len(args) != 3) {
+		if (!args || (webview_value_get_len(args) != 3 && webview_value_get_len(args) != 4)) {
 			return 0;
 		}
 		int browserId = int(webview_value_get_int(webview_value_get_list_value(args, 0)));
 		int x = int(webview_value_get_int(webview_value_get_list_value(args, 1)));
 		int y = int(webview_value_get_int(webview_value_get_list_value(args, 2)));
+		int buttons = webview_value_get_len(args) == 4
+			? int(webview_value_get_int(webview_value_get_list_value(args, 3)))
+			: 1;
 		if (!x && !y) {
 			return 0;
 		}
 		if (name.compare("cursorClickDown") == 0) {
-			m_handler->cursorClick(browserId, x, y, false);
+			m_handler->cursorClick(browserId, x, y, false, buttons);
 		}
 		else if (name.compare("cursorClickUp") == 0) {
-			m_handler->cursorClick(browserId, x, y, true);
+			m_handler->cursorClick(browserId, x, y, true, buttons);
 		}
 		else if (name.compare("cursorMove") == 0) {
 			m_handler->cursorMove(browserId, x, y, false);
