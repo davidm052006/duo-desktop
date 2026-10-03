@@ -828,7 +828,7 @@ class _PanelMovimientos extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              estado.eventosConectados
+              eventosConectados
                   ? 'La pizarra se actualiza por WebSocket. La salida de los agentes '
                       'también está disponible en la vista Salida en vivo.'
                   : 'El WebSocket está desconectado; se conserva la última pizarra '
