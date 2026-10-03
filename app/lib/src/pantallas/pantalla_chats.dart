@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_all/webview_all.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
 
+import '../chats/motor_chat_cef.dart';
 import '../tema/paleta.dart';
 
 /// Experimento aislado (rama experiment/chats-webview).
@@ -15,6 +16,7 @@ class PantallaChats extends StatefulWidget {
   /// Interruptor temporal para aislar el problema de pintura del WebView en
   /// Linux. Debe quedar en `false` cuando termine el experimento.
   static const bool kDiagnosticoWebView = false;
+  static const bool kUsarCef = true;
 
   @override
   State<PantallaChats> createState() => _PantallaChatsState();
@@ -51,6 +53,7 @@ class _PantallaChatsState extends State<PantallaChats> {
   String? _mensajeEstado;
   WebViewController? _controller;
   bool _webViewDisponible = true;
+  int _cefRecarga = 0;
 
   String get _urlActual => PantallaChats.kDiagnosticoWebView
       ? 'https://example.com'
@@ -62,7 +65,7 @@ class _PantallaChatsState extends State<PantallaChats> {
   @override
   void initState() {
     super.initState();
-    _inicializarWebView();
+    if (!PantallaChats.kUsarCef) _inicializarWebView();
   }
 
   @override
@@ -160,6 +163,7 @@ class _PantallaChatsState extends State<PantallaChats> {
 
     setState(() {
       _proveedor = nuevo;
+      _cefRecarga++;
       _estado = _EstadoChatWeb.cargando;
       _mensajeEstado = 'Cargando $_hostActual…';
     });
@@ -182,6 +186,10 @@ class _PantallaChatsState extends State<PantallaChats> {
   }
 
   Future<void> _recargar() async {
+    if (PantallaChats.kUsarCef) {
+      setState(() => _cefRecarga++);
+      return;
+    }
     final controller = _controller;
     if (controller == null) {
       await _inicializarWebView();
@@ -273,6 +281,9 @@ class _PantallaChatsState extends State<PantallaChats> {
               alReintentar: _recargar,
               alAbrirNavegador: _abrirEnNavegador,
               diagnostico: PantallaChats.kDiagnosticoWebView,
+              usarCef: PantallaChats.kUsarCef,
+              cefRecarga: _cefRecarga,
+              urlCef: _urlActual,
             ),
           ),
           const SizedBox(height: 10),
@@ -421,6 +432,9 @@ class _MarcoWebChat extends StatelessWidget {
     required this.alReintentar,
     required this.alAbrirNavegador,
     required this.diagnostico,
+    required this.usarCef,
+    required this.cefRecarga,
+    required this.urlCef,
   });
 
   final WebViewController? controller;
@@ -430,9 +444,18 @@ class _MarcoWebChat extends StatelessWidget {
   final VoidCallback alReintentar;
   final VoidCallback alAbrirNavegador;
   final bool diagnostico;
+  final bool usarCef;
+  final int cefRecarga;
+  final String urlCef;
 
   @override
   Widget build(BuildContext context) {
+    if (usarCef) {
+      return MotorChatCef(
+        key: ValueKey('cef-$cefRecarga-$urlCef'),
+        initialUrl: urlCef,
+      );
+    }
     final paleta = context.paleta;
 
     final webView = controller != null && webViewDisponible

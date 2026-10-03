@@ -38,6 +38,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   provider: ^6.1.5+1
   shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
   path_provider_linux: ^2.2.2
   shared_preferences_linux: ^2.4.1
   media_kit_libs_video: ^1.0.7
@@ -47,6 +48,10 @@ dependencies:
   # webview_flutter_linux chocaba con meta del SDK (record_use).
   # webview_all usa WebKitGTK en Linux y API compatible con webview_flutter.
   webview_all: ^1.4.4
+  # Experimento CEF: Chromium embebido como textura de Flutter. Se mantiene
+  # local para poder auditar los switches de seguridad antes de usarlo.
+  webview_cef:
+    path: packages/webview_cef_duo
   url_launcher: ^6.3.1
 
 dev_dependencies:
