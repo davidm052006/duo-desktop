@@ -109,69 +109,89 @@ class _PantallaChatsState extends State<PantallaChats> {
     final estado = _estado;
     final mensaje = _mensajeEstado;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Chats', style: textos.headlineSmall?.copyWith(fontSize: 26)),
-          const SizedBox(height: 6),
-          Text(
-            'ChatGPT y Grok se quedan abiertos al cambiar de pestaña o de vista.',
-            style: textos.bodySmall?.copyWith(color: paleta.tintaSecundaria),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compacto = constraints.maxWidth < 740;
+        final barra = _BarraChats(
+          proveedor: _proveedor,
+          alCambiar: _cambiarProveedor,
+          alRecargar: _recargar,
+          alAbrirNavegador: _abrirEnNavegador,
+          recargarHabilitado: true,
+          compacto: compacto,
+        );
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            compacto ? 12 : 16,
+            12,
+            compacto ? 12 : 16,
+            10,
           ),
-          const SizedBox(height: 18),
-          _BarraChats(
-            proveedor: _proveedor,
-            alCambiar: _cambiarProveedor,
-            alRecargar: _recargar,
-            alAbrirNavegador: _abrirEnNavegador,
-            recargarHabilitado: true,
-          ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: paleta.panel,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: paleta.rejilla),
-              ),
-              clipBehavior: Clip.none,
-              child: PanelProveedoresCef(
-                sesion: _sesion,
-                capaError: estado == _EstadoChatWeb.webViewNoDisponible
-                    ? _CapaError(
-                        titulo: 'El WebView no está disponible',
-                        detalle: mensaje ??
-                            'Duo no pudo iniciar el motor web. Reintenta en esta vista.',
-                        alReintentar: _recargar,
-                      )
-                    : estado == _EstadoChatWeb.errorNavegacion
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (compacto) ...[
+                Text('Chats', style: textos.titleLarge),
+                const SizedBox(height: 8),
+                barra,
+              ] else
+                Row(
+                  children: [
+                    Text('Chats', style: textos.headlineSmall),
+                    const SizedBox(width: 18),
+                    Expanded(child: barra),
+                  ],
+                ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: paleta.panel,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: paleta.rejilla),
+                  ),
+                  clipBehavior: Clip.none,
+                  child: PanelProveedoresCef(
+                    sesion: _sesion,
+                    capaError: estado == _EstadoChatWeb.webViewNoDisponible
+                        ? _CapaError(
+                            titulo: 'El WebView no está disponible',
+                            detalle:
+                                mensaje ??
+                                'Duo no pudo iniciar el motor web. Reintenta en esta vista.',
+                            alReintentar: _recargar,
+                          )
+                        : estado == _EstadoChatWeb.errorNavegacion
                         ? _CapaError(
                             titulo: 'No se pudo cargar la página',
-                            detalle: mensaje ??
+                            detalle:
+                                mensaje ??
                                 'El motor web informó un error de carga.',
                             alReintentar: _recargar,
                           )
                         : estado == _EstadoChatWeb.procesoTerminado
-                            ? _CapaError(
-                                titulo: 'El contenido web dejó de responder',
-                                detalle: mensaje ??
-                                    'El proceso del WebView terminó inesperadamente.',
-                                alReintentar: _recargar,
-                              )
-                            : null,
+                        ? _CapaError(
+                            titulo: 'El contenido web dejó de responder',
+                            detalle:
+                                mensaje ??
+                                'El proceso del WebView terminó inesperadamente.',
+                            alReintentar: _recargar,
+                          )
+                        : null,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 6),
+              _EstadoChatWebBarra(
+                estado: estado,
+                mensaje: mensaje,
+                host: _proveedor.host,
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          _EstadoChatWebBarra(
-            estado: estado,
-            mensaje: mensaje,
-            host: _proveedor.host,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -183,6 +203,7 @@ class _BarraChats extends StatelessWidget {
     required this.alRecargar,
     required this.alAbrirNavegador,
     required this.recargarHabilitado,
+    required this.compacto,
   });
 
   final ProveedorChat proveedor;
@@ -190,6 +211,7 @@ class _BarraChats extends StatelessWidget {
   final VoidCallback alRecargar;
   final VoidCallback alAbrirNavegador;
   final bool recargarHabilitado;
+  final bool compacto;
 
   @override
   Widget build(BuildContext context) {
@@ -204,15 +226,21 @@ class _BarraChats extends StatelessWidget {
           onPressed: recargarHabilitado ? alRecargar : null,
           icon: Icon(Icons.refresh, size: 20, color: paleta.tintaSecundaria),
         ),
-        const SizedBox(width: 4),
-        TextButton.icon(
-          onPressed: alAbrirNavegador,
-          icon: Icon(Icons.open_in_new, size: 16, color: paleta.acento),
-          label: Text(
-            'Abrir en navegador',
-            style: TextStyle(color: paleta.acento),
-          ),
-        ),
+        const SizedBox(width: 2),
+        compacto
+            ? IconButton(
+                tooltip: 'Abrir en navegador',
+                onPressed: alAbrirNavegador,
+                icon: Icon(Icons.open_in_new, size: 19, color: paleta.acento),
+              )
+            : TextButton.icon(
+                onPressed: alAbrirNavegador,
+                icon: Icon(Icons.open_in_new, size: 16, color: paleta.acento),
+                label: Text(
+                  'Abrir en navegador',
+                  style: TextStyle(color: paleta.acento),
+                ),
+              ),
       ],
     );
   }
