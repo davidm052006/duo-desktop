@@ -263,7 +263,7 @@ class _TarjetaAgentes extends StatelessWidget {
             ),
           ),
           // Saber si el proceso del agente sigue vivo exige hablar con el CLI.
-          const MarcaFase(2),
+          const SizedBox.shrink(),
         ],
       ),
       hijo: Column(
@@ -443,9 +443,18 @@ class _TarjetaLectura extends StatelessWidget {
       pie: Row(
         children: [
           Expanded(
-            child: Text('Eventos en vivo por WebSocket', style: textos.labelSmall),
+            child: Text(
+              estado.eventosConectados
+                  ? 'Eventos en vivo por WebSocket'
+                  : 'WebSocket reconectando · sondeo de respaldo',
+              style: textos.labelSmall,
+            ),
           ),
-          const MarcaFase(2),
+          Icon(
+            estado.eventosConectados ? Icons.wifi_tethering : Icons.sync,
+            size: 15,
+            color: estado.eventosConectados ? paleta.bien : paleta.aviso,
+          ),
         ],
       ),
       hijo: Column(
@@ -458,7 +467,13 @@ class _TarjetaLectura extends StatelessWidget {
                 : '.team/BOARD.md',
           ),
           const SizedBox(height: 8),
-          _Dato(etiqueta: 'Refresco', valor: 'sondeo cada ${estado.intervalo.inSeconds}s'),
+          _Dato(
+            etiqueta: 'Canal',
+            valor: estado.eventosConectados
+                ? 'WebSocket /events'
+                : 'sondeo respaldo cada ${estado.intervalo.inSeconds}s',
+            tono: estado.eventosConectados ? paleta.bien : paleta.aviso,
+          ),
           const SizedBox(height: 8),
           _Dato(
             etiqueta: 'Última',
@@ -806,8 +821,11 @@ class _PanelMovimientos extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Los eventos en vivo (ediciones de archivos, salida de los agentes) '
-              'llegan por WebSocket en la Fase 2. Esta vista se refresca por sondeo.',
+              estado.eventosConectados
+                  ? 'La pizarra se actualiza por WebSocket. La salida de los agentes '
+                      'también está disponible en la vista Salida en vivo.'
+                  : 'El WebSocket está desconectado; se conserva la última pizarra '
+                      'válida y se usa sondeo mientras el canal se recupera.',
               style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
             ),
           ),
