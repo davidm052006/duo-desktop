@@ -1,73 +1,77 @@
 # T-027 — entregable de `codex`
 
 **Rama:** `codex/t-027-prueba-de-owner-nuevo-para-validacion-ph`  
-**Cerrado:** 2026-10-03 14:48
+**Cerrado:** 2026-10-03 14:53
 
 ## Cambios contra la base
 
 ```
-(sin cambios)
+ service/Duo/LiveEventStream.cs               | 29 +++++++++---
+ service/Duo/TaskOwnerHistoryReader.cs        | 67 ++++++++++++++++++++++++++++
+ service/Program.cs                           |  1 +
+ service/tests/TaskOwnerHistoryReaderTests.cs | 59 ++++++++++++++++++++++++
+ 4 files changed, 151 insertions(+), 5 deletions(-)
 ```
 
 ## Lo que reportó el agente
 
-        Directory.CreateDirectory(Path.Combine(board, ".team"));
-        Directory.CreateDirectory(conf);
-        File.WriteAllText(Path.Combine(board, ".team", "BOARD.md"), """
-            | Tarea | Título | Dueño | Rama | Estado | Abierta |
-            | --- | --- | --- | --- | --- | --- |
-            | T-019 | Implementar streaming | codex | codex/t-019 | haciendo | 2026-10-01 |
-            """);
-        File.WriteAllText(Path.Combine(board, ".team", "ledger.tsv"), """
-            agente	puntos	tareas	ultima
-            codex	1	1	2026-10-01
-            """);
-        File.WriteAllText(Path.Combine(conf, "test.conf"),
-            $"set -g DUO_PROJECT test\nset -g REPO_DIR {repo}\nset -g BOARD {board}\n");
-        Environment.SetEnvironmentVariable("DUO_CONF", conf);
-        Environment.SetEnvironmentVariable("DUO_P", "test");
-        return board;
-    }
-}
++        using (var repository = new Repository(_root))
++        {
++            WriteBoard("""
++                | Tarea | Título | Dueño | Rama | Estado | Abierta |
++                | --- | --- | --- | --- | --- | --- |
++                | T-027 | título con | separador | nuevo | nuevo/t-027 | integrada | 2026-10-03 |
++                """);
++            Commit(repository, "T-027 integrada", 1);
++
++            WriteBoard("""
++                | Tarea | Título | Dueño | Rama | Estado | Abierta |
++                | --- | --- | --- | --- | --- | --- |
++                """);
++            Commit(repository, "oculta T-027 del tablero actual", 2);
++        }
++
++        var project = new DuoProject("test", _root, "main", _root, []);
++        var owners = new TaskOwnerHistoryReader(NullLogger<TaskOwnerHistoryReader>.Instance)
++            .Read(project, ["T-027"]);
++
++        Assert.Equal("nuevo", owners["T-027"]);
++    }
++
++    public void Dispose()
++    {
++        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
++    }
++
++    private void WriteBoard(string content)
++    {
++        var team = Path.Combine(_root, ".team");
++        Directory.CreateDirectory(team);
++        File.WriteAllText(Path.Combine(team, "BOARD.md"), content);
++    }
++
++    private static void Commit(Repository repository, string message, int sequence)
++    {
++        Commands.Stage(repository, ".team/BOARD.md");
++        var when = DateTimeOffset.UnixEpoch.AddMinutes(sequence);
++        var author = new Signature("Test", "test@example.test", when);
++        repository.Commit(message, author, author);
++    }
++}
 
-codex
-La integración aún no está disponible y el rebase de mi rama fue bloqueado por el sandbox: el repositorio compartido guarda su metadato Git fuera del directorio con permiso de escritura. No voy a insertar una prueba que no compilaría contra `main`; confirmaré que el caso sigue sin cobertura en la rama Phase 2 y dejaré la propuesta exacta.
-exec
-/usr/bin/bash -lc "git ls-tree -r --name-only origin/feature/phase-2-live-tasks service/tests | sort && git log --oneline HEAD..origin/feature/phase-2-live-tasks -- service/tests app/test && git status --short --branch && git diff --exit-code; printf 'diff_exit=%s\\n' \""'$?"' in /home/david/dev/wt/codex-duo-desktop
- succeeded in 188ms:
-service/tests/DuoCommandRunnerTests.cs
-service/tests/DuoDesktop.Service.Tests.csproj
-service/tests/GitHubReaderTests.cs
-service/tests/HistoryReaderTests.cs
-service/tests/LiveEventContractTests.cs
-service/tests/QuestionReaderTests.cs
-## codex/t-027-prueba-de-owner-nuevo-para-validacion-ph
-diff_exit=0
-
-codex
-No está disponible aún: `origin/main` sigue sin Phase 2 ni `TaskOwnerHistoryReader`. La cobertura de owner histórico tampoco existe en `origin/feature/phase-2-live-tasks`.
-
-Intenté rebasar solo esta rama sobre Phase 2 para añadir el test, pero el sandbox bloqueó la escritura del metadato Git compartido fuera del workspace:
-
-`could not create temporary .../.git/worktrees/.../rebase-merge: Read-only file system`
-
-No modifiqué archivos ni hice commits, para no dejar una prueba que no compile contra `main`. El test pendiente debe crear dos revisiones de `.team/BOARD.md` en un repo temporal, retirar `T-NNN` de la revisión actual y comprobar que `TaskOwnerHistoryReader` devuelve el owner de la revisión histórica.
-
-La validación puntual de `LiveEventContractTests` también quedó bloqueada al iniciar VSTest, porque el sandbox niega sockets locales; la compilación sí llegó a completarse.
-
-## PREGUNTA
-1. ¿Puedes recrear T-027 desde `origin/feature/phase-2-live-tasks` (o integrar Phase 2 en `main`) para que añada el test ejecutable del owner histórico?
 tokens used
-50,318
-No está disponible aún: `origin/main` sigue sin Phase 2 ni `TaskOwnerHistoryReader`. La cobertura de owner histórico tampoco existe en `origin/feature/phase-2-live-tasks`.
+64,511
+Implementé la corrección de owners históricos para eventos de sesión:
 
-Intenté rebasar solo esta rama sobre Phase 2 para añadir el test, pero el sandbox bloqueó la escritura del metadato Git compartido fuera del workspace:
+- Añadí `TaskOwnerHistoryReader`, que busca el owner de tareas ya ausentes de `BOARD.md` en el historial Git.
+- `LiveEventStream` carga esos owners al conectar y conserva prioridad para el tablero actual.
+- Registré el lector en DI.
+- Añadí la regresión `TaskOwnerHistoryReaderTests`: verifica que `T-027`, retirada del tablero actual, mantiene el owner nuevo incluso con `|` en el título.
 
-`could not create temporary .../.git/worktrees/.../rebase-merge: Read-only file system`
+Validación:
 
-No modifiqué archivos ni hice commits, para no dejar una prueba que no compile contra `main`. El test pendiente debe crear dos revisiones de `.team/BOARD.md` en un repo temporal, retirar `T-NNN` de la revisión actual y comprobar que `TaskOwnerHistoryReader` devuelve el owner de la revisión histórica.
+- `dotnet build service/DuoDesktop.Service.csproj` pasó.
+- La prueba fue compilada, pero `dotnet test` no pudo arrancar: el sandbox deniega el socket local que usa VSTest (`SocketException: Permission denied`).
+- `git diff --check` pasó.
 
-La validación puntual de `LiveEventContractTests` también quedó bloqueada al iniciar VSTest, porque el sandbox niega sockets locales; la compilación sí llegó a completarse.
-
-## PREGUNTA
-1. ¿Puedes recrear T-027 desde `origin/feature/phase-2-live-tasks` (o integrar Phase 2 en `main`) para que añada el test ejecutable del owner histórico?
+Pendiente para David: ejecutar `dotnet test service/tests/DuoDesktop.Service.Tests.csproj --filter FullyQualifiedName~TaskOwnerHistoryReaderTests` fuera de este sandbox. No pude rebasar ni commitear: el directorio Git compartido del worktree está montado como solo lectura.
