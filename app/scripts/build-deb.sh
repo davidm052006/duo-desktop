@@ -94,6 +94,7 @@ mkdir -p \
   "$PACKAGE_ROOT/usr/share/applications" \
   "$PACKAGE_ROOT/usr/share/icons/hicolor/scalable/apps" \
   "$DIST_DIR"
+chmod g-s "$PACKAGE_ROOT/DEBIAN"
 chmod 0755 "$PACKAGE_ROOT/DEBIAN"
 
 cp -a "$BUILD_BUNDLE/." "$PACKAGE_ROOT/usr/lib/duo-desktop/"
