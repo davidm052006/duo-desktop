@@ -5,6 +5,7 @@
 #endif
 
 #include <math.h>
+#include <filesystem>
 #include <memory>
 #include <thread>
 #include <iostream>
@@ -14,6 +15,7 @@ namespace webview_cef {
 	CefMainArgs mainArgs;
 	CefRefPtr<WebviewApp> app;
 	CefString userAgent;
+	CefString rootCachePath;
 	bool isCefInitialized = false;
 #ifdef OS_MAC
 	std::string g_macSubprocessPath;
@@ -268,7 +270,19 @@ namespace webview_cef {
 		if (name.compare("init") == 0){
 			if(!isCefInitialized){
 				if(values != nullptr){
-					userAgent = CefString(webview_value_get_string(values));
+					if(webview_value_get_type(values) == Webview_Value_Type_Map){
+						WValue* agent = webview_value_get_by_string(values, "userAgent");
+						if(agent != nullptr && webview_value_get_type(agent) == Webview_Value_Type_String){
+							userAgent = CefString(webview_value_get_string(agent));
+						}
+						WValue* cachePath = webview_value_get_by_string(values, "rootCachePath");
+						if(cachePath != nullptr && webview_value_get_type(cachePath) == Webview_Value_Type_String){
+							rootCachePath = CefString(webview_value_get_string(cachePath));
+						}
+					}
+					else if(webview_value_get_type(values) == Webview_Value_Type_String){
+						userAgent = CefString(webview_value_get_string(values));
+					}
 				}
 				startCEF();
 			}
@@ -702,6 +716,21 @@ namespace webview_cef {
 		cefs.no_sandbox = false;
 		if(!userAgent.empty()){
 			CefString(&cefs.user_agent_product) = userAgent;
+		}
+		if(!rootCachePath.empty()){
+			std::filesystem::path cachePath(rootCachePath.ToString());
+			std::error_code error;
+			cachePath = std::filesystem::absolute(cachePath, error).lexically_normal();
+			if(!error){
+				std::filesystem::create_directories(cachePath, error);
+			}
+			if(error){
+				std::cout << "webview_cef: no se pudo preparar root_cache_path "
+						  << rootCachePath.ToString() << " (" << error.message() << ")" << std::endl;
+			}
+			else{
+				CefString(&cefs.root_cache_path) = cachePath.string();
+			}
 		}
 		//locale language setting
 		//CefString(&cefs.locale) = "zh-CN";
