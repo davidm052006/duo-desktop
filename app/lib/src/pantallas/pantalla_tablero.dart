@@ -131,29 +131,96 @@ class _Contenido extends StatelessWidget {
 
   final Tablero tablero;
 
+  static const _anchoPanelLateral = 320.0;
+  static const _separacion = 18.0;
+  static const _umbralDosColumnas = 1180.0;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _AvisoFaseUno(),
-          const SizedBox(height: 14),
-          Expanded(child: TableroKanban(tareas: tablero.tareas)),
-          const SizedBox(height: 20),
-          _Seccion(
-            titulo: 'Carga acumulada',
-            hijo: CargaAgentes(
-              agentes: tablero.agentes,
-              maximo: tablero.puntosMaximos,
+    return LayoutBuilder(
+      builder: (context, limites) {
+        final anchoDisponible = limites.maxWidth;
+        final dosColumnas = anchoDisponible >= _umbralDosColumnas;
+
+        if (dosColumnas) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _AvisoFaseUno(),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: TableroKanban(tareas: tablero.tareas),
+                      ),
+                      const SizedBox(width: _separacion),
+                      SizedBox(
+                        width: _anchoPanelLateral,
+                        child: _PanelResumen(tablero: tablero),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-          if (tablero.proyecto != null) ...[
-            const SizedBox(height: 18),
-            _Procedencia(proyecto: tablero.proyecto!),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          children: [
+            const _AvisoFaseUno(),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 560,
+              child: TableroKanban(tareas: tablero.tareas),
+            ),
+            const SizedBox(height: 20),
+            _PanelResumen(tablero: tablero),
           ],
-        ],
+        );
+      },
+    );
+  }
+}
+
+class _PanelResumen extends StatelessWidget {
+  const _PanelResumen({required this.tablero});
+
+  final Tablero tablero;
+
+  @override
+  Widget build(BuildContext context) {
+    final contenido = <Widget>[
+      _Seccion(
+        titulo: 'Carga acumulada',
+        hijo: CargaAgentes(
+          agentes: tablero.agentes,
+          maximo: tablero.puntosMaximos,
+        ),
+      ),
+      if (tablero.proyecto != null) ...[
+        const SizedBox(height: 22),
+        _Procedencia(proyecto: tablero.proyecto!),
+      ],
+    ];
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.paleta.panel,
+        border: Border.all(color: context.paleta.rejilla),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: contenido,
+        ),
       ),
     );
   }
