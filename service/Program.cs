@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<DuoProjectLocator>();
 builder.Services.AddSingleton<BoardReader>();
 builder.Services.AddSingleton<QuestionReader>();
+builder.Services.AddSingleton<TaskOwnerHistoryReader>();
 builder.Services.AddSingleton<LiveEventStream>();
 builder.Services.AddSingleton<HistoryReader>();
 builder.Services.AddSingleton<GitHubReader>();
