@@ -59,7 +59,13 @@ class _TableroKanbanState extends State<TableroKanban> {
         // Las cuatro columnas necesitan una anchura mínima legible. El
         // controlador explícito evita que el Scrollbar se enlace al scroll
         // vertical primario en lugar de al desplazamiento del tablero.
-        final anchoTablero = limites.maxWidth > 1192 ? limites.maxWidth : 1192.0;
+        const anchoMinimoColumna = 240.0;
+        const separacionColumnas = 14.0;
+        final anchoMinimo =
+            (anchoMinimoColumna * columnas.length) +
+            (separacionColumnas * (columnas.length - 1));
+        final anchoTablero =
+            limites.maxWidth > anchoMinimo ? limites.maxWidth : anchoMinimo;
 
         final tablero = Scrollbar(
           controller: _desplazamientoHorizontal,
@@ -78,7 +84,7 @@ class _TableroKanbanState extends State<TableroKanban> {
                 children: [
                   for (var i = 0; i < columnas.length; i++) ...[
                     Expanded(child: columnas[i]),
-                    if (i != columnas.length - 1) const SizedBox(width: 16),
+                    if (i != columnas.length - 1) const SizedBox(width: 14),
                   ],
                 ],
               ),
