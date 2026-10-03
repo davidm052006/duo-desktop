@@ -56,11 +56,16 @@ class WebviewManager extends ValueNotifier<bool> {
 
   WebviewManager._internal() : super(false);
 
-  Future<void> initialize({String? userAgent}) async {
+  Future<void> initialize({String? userAgent, String? rootCachePath}) async {
     _creatingCompleter = Completer<void>();
     try {
-      if (userAgent != null && userAgent.isNotEmpty) {
-        await pluginChannel.invokeMethod('init', userAgent);
+      final settings = <String, String>{
+        if (userAgent != null && userAgent.isNotEmpty) 'userAgent': userAgent,
+        if (rootCachePath != null && rootCachePath.isNotEmpty)
+          'rootCachePath': rootCachePath,
+      };
+      if (settings.isNotEmpty) {
+        await pluginChannel.invokeMethod('init', settings);
       } else {
         await pluginChannel.invokeMethod('init');
       }
