@@ -51,7 +51,7 @@ class PantallaTerminal extends StatelessWidget {
         if (estado.falloEventos != null && !estado.eventosConectados) ...[
           const SizedBox(height: 8),
           Mono(
-            '\${estado.falloEventos!.codigo}: \${estado.falloEventos!.mensaje}',
+            '${estado.falloEventos!.codigo}: ${estado.falloEventos!.mensaje}',
             color: paleta.aviso,
           ),
         ],
@@ -60,7 +60,7 @@ class PantallaTerminal extends StatelessWidget {
           titulo: 'Salida de agentes',
           icono: Icons.wifi_tethering,
           sufijo: Insignia(
-            '\${estado.salidas.length} bloque(s)',
+            '${estado.salidas.length} bloque(s)',
             tono: paleta.tintaSecundaria,
             mono: true,
           ),
@@ -139,7 +139,7 @@ class _Linea extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '[\$agente]',
+                  '[$agente]',
                   style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 12.5,
