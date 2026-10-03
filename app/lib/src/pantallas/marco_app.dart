@@ -11,6 +11,7 @@ import '../widgets/tarjeta.dart';
 import 'fondo_video_config.dart';
 import 'fondo_video_reproductor.dart';
 import 'pantalla_agentes.dart';
+import 'pantalla_chats.dart';
 import 'pantalla_configuracion.dart';
 import 'pantalla_github.dart';
 import 'pantalla_historial.dart';
@@ -37,6 +38,7 @@ const destinosTrabajo = [
   Destino('Tablero', Icons.view_week_outlined),
   Destino('Tareas', Icons.check_circle_outline),
   Destino('Agentes', Icons.hub_outlined),
+  Destino('Chats', Icons.chat_bubble_outline),
   Destino('Preguntas', Icons.help_outline),
   Destino('Terminal', Icons.code),
   Destino('GitHub', Icons.commit_outlined),
@@ -227,6 +229,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                         'Tablero' => const PantallaTablero(),
                         'Tareas' => const PantallaTareas(),
                         'Agentes' => const PantallaAgentes(),
+                        'Chats' => const PantallaChats(),
                         'Preguntas' => const PantallaPreguntas(),
                         'Terminal' => const PantallaTerminal(),
                         'GitHub' => const PantallaGitHub(),

@@ -9,6 +9,12 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# El fork CEF se analiza y prueba desde su propio paquete. Excluirlo evita que
+# los ejemplos internos se mezclen con el análisis de la app anfitriona.
+analyzer:
+  exclude:
+    - packages/webview_cef_duo/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
