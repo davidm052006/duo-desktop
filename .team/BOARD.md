@@ -2,6 +2,7 @@
 
 | Tarea | Título | Dueño | Rama | Estado | Abierta |
 |-------|--------|-------|------|--------|---------|
+| T-027 | Prueba de owner nuevo para validación Phase 2. | `codex` | `codex/t-027-prueba-de-owner-nuevo-para-validacion-ph` | abierta | 2026-10-03 |
 | T-026 | Prueba E2E breve: confirmar board_changed y salida de sesión. | `codex` | `codex/t-026-prueba-e2e-breve-confirmar-board-changed` | abierta | 2026-10-03 |
 | T-025 | Prueba E2E breve: confirmar los eventos board_changed y agent_output. | `codex` | `codex/t-025-prueba-e2e-breve-confirmar-los-eventos-b` | abierta | 2026-10-03 |
 | T-024 | escribe un glosario breve de los terminos del proyecto: tarea, brief, entregable, pizarra, worktree, agente, ledger, territorio, revision cruzada e integrar. Dos lineas por termino, explicando que es y como aparece en duo-desktop. Formato markdown con un titulo y una lista. Escribe el resultado en: `docs/GLOSARIO.md` | `gem` | `gem/t-024-escribe-un-glosario-breve-de-los-termino` | integrada | 2026-10-02 |
