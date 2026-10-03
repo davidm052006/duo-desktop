@@ -17,5 +17,12 @@ class ConfigDuo {
   /// El servicio escucha solo en loopback (ver docs/ARQUITECTURA.md).
   Uri ruta(String camino) => Uri.http('127.0.0.1:$puerto', camino);
 
+  Uri rutaWebSocket(String camino) => Uri(
+    scheme: 'ws',
+    host: '127.0.0.1',
+    port: puerto,
+    path: camino,
+  );
+
   bool get tieneToken => token.isNotEmpty;
 }
