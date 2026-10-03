@@ -97,7 +97,7 @@ class _Contenido extends StatelessWidget {
             const SizedBox(height: 18),
             _PanelMovimientos(
               tablero: tablero,
-              eventosConectados: eventosConectados,
+              eventosConectados: estado.eventosConectados,
             ),
           ],
         );
@@ -447,16 +447,16 @@ class _TarjetaLectura extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              eventosConectados
+              estado.eventosConectados
                   ? 'Eventos en vivo por WebSocket'
                   : 'WebSocket reconectando · sondeo de respaldo',
               style: textos.labelSmall,
             ),
           ),
           Icon(
-            eventosConectados ? Icons.wifi_tethering : Icons.sync,
+            estado.eventosConectados ? Icons.wifi_tethering : Icons.sync,
             size: 15,
-            color: eventosConectados ? paleta.bien : paleta.aviso,
+            color: estado.eventosConectados ? paleta.bien : paleta.aviso,
           ),
         ],
       ),
@@ -472,10 +472,10 @@ class _TarjetaLectura extends StatelessWidget {
           const SizedBox(height: 8),
           _Dato(
             etiqueta: 'Canal',
-            valor: eventosConectados
+            valor: estado.eventosConectados
                 ? 'WebSocket /events'
                 : 'sondeo respaldo cada ${estado.intervalo.inSeconds}s',
-            tono: eventosConectados ? paleta.bien : paleta.aviso,
+            tono: estado.eventosConectados ? paleta.bien : paleta.aviso,
           ),
           const SizedBox(height: 8),
           _Dato(
@@ -828,7 +828,7 @@ class _PanelMovimientos extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              eventosConectados
+              estado.eventosConectados
                   ? 'La pizarra se actualiza por WebSocket. La salida de los agentes '
                       'también está disponible en la vista Salida en vivo.'
                   : 'El WebSocket está desconectado; se conserva la última pizarra '
