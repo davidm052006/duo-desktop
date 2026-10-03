@@ -795,9 +795,9 @@ class _BarraCarga extends StatelessWidget {
 
 /// Lo último que pasó en el tablero, por fecha de apertura.
 ///
-/// No es la actividad del sistema de archivos del diseño: eso necesita el
-/// vigilante y el WebSocket de la Fase 2. Esto es lo que sí se puede afirmar
-/// hoy sin inventar nada.
+/// Resume el estado publicado de la pizarra. Cuando /events está conectado,
+/// los cambios llegan en vivo; si el canal cae, el estado compartido vuelve
+/// temporalmente al sondeo sin borrar la última lectura válida.
 class _PanelMovimientos extends StatelessWidget {
   const _PanelMovimientos({required this.tablero});
 
@@ -829,7 +829,6 @@ class _PanelMovimientos extends StatelessWidget {
               style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
             ),
           ),
-          const MarcaFase(2),
         ],
       ),
       hijo: recientes.isEmpty
