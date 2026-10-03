@@ -1,84 +1,152 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:webview_cef/webview_cef.dart';
 
-import 'cef_chats_runtime.dart';
+import 'proveedor_chat.dart';
 
-/// Motor Chromium aislado para el experimento de Chats.
+/// Un navegador CEF vivo para un solo proveedor.
 ///
-/// No está conectado aún a PantallaChats: así podemos comprobar primero el
-/// arranque, procesos y políticas de CEF sin alterar la vista existente.
-class MotorChatCef extends StatefulWidget {
-  const MotorChatCef({
-    super.key,
-    required this.initialUrl,
-    this.onReady,
-    this.onUrlChanged,
-    this.onConsoleMessage,
-  });
+/// No se destruye al cambiar de ChatGPT/Grok ni al salir de la vista Chats.
+/// [disposeMotor] solo existe para apagar Duo; la pantalla no debe llamarlo.
+class MotorChatCef extends ChangeNotifier {
+  MotorChatCef({required this.proveedor});
 
-  final String initialUrl;
-  final VoidCallback? onReady;
-  final ValueChanged<String>? onUrlChanged;
-  final ValueChanged<String>? onConsoleMessage;
+  final ProveedorChat proveedor;
 
-  @override
-  State<MotorChatCef> createState() => _MotorChatCefState();
-}
-
-class _MotorChatCefState extends State<MotorChatCef> {
   WebViewController? _controller;
-  Object? _error;
+  Future<void>? _creacion;
+  Timer? _ocultarEsqueleto;
+  String? _url;
+  String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _inicializar();
+  EstadoMotorChat estado = EstadoMotorChat.sinCrear;
+  bool primerCargaCompleta = false;
+
+  WebViewController? get controller => _controller;
+  String? get error => _error;
+  String? get url => _url;
+  bool get listo => _controller?.value == true;
+
+  Future<void> crear() {
+    return _creacion ??= _crearAhora();
   }
 
-  Future<void> _inicializar() async {
+  Future<void> _crearAhora() async {
+    estado = EstadoMotorChat.creando;
+    _error = null;
+    notifyListeners();
+
     try {
-      await CefChatsRuntime.iniciar();
       final controller = WebviewManager().createWebView(
-        loading: const Center(child: CircularProgressIndicator()),
+        loading: const SizedBox.expand(),
       );
+
       controller.setWebviewListener(
         WebviewEventsListener(
-          onUrlChanged: widget.onUrlChanged,
-          onConsoleMessage: (nivel, mensaje, fuente, linea) {
-            widget.onConsoleMessage?.call(
-              '[$nivel] $mensaje ($fuente:$linea)',
+          onLoadStart: (_, url) {
+            _url = url;
+            debugPrint('[CEF/${proveedor.nombre}] START $url');
+            estado = EstadoMotorChat.cargando;
+            notifyListeners();
+          },
+          onLoadEnd: (_, url) {
+            _url = url;
+            debugPrint('[CEF/${proveedor.nombre}] END $url');
+            _marcarListoTrasPintado();
+          },
+          onUrlChanged: (url) {
+            _url = url;
+            debugPrint('[CEF/${proveedor.nombre}] URL $url');
+            notifyListeners();
+          },
+          onConsoleMessage: (nivel, mensaje, origen, linea) {
+            debugPrint(
+              '[CEF/${proveedor.nombre} console:$nivel] $mensaje ($origen:$linea)',
             );
           },
         ),
       );
-      await controller.initialize(widget.initialUrl);
 
-      if (!mounted) {
-        await controller.dispose();
-        return;
+      _controller = controller;
+      notifyListeners();
+      await controller.initialize(proveedor.url);
+      if (!primerCargaCompleta) {
+        estado = EstadoMotorChat.cargando;
+        notifyListeners();
       }
-      setState(() => _controller = controller);
-      widget.onReady?.call();
-    } on Object catch (error) {
-      if (mounted) setState(() => _error = error);
+    } on Object catch (e, st) {
+      debugPrint('[CEF/${proveedor.nombre}] init error: $e');
+      debugPrintStack(stackTrace: st);
+      _error = e.toString();
+      estado = EstadoMotorChat.error;
+      _creacion = null;
+      notifyListeners();
+      rethrow;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Grok a menudo pinta el logo antes del SPA. Un breve margen evita
+  /// quitar el esqueleto en ese fotograma vacío.
+  void _marcarListoTrasPintado() {
+    _ocultarEsqueleto?.cancel();
+    final espera = proveedor == ProveedorChat.grok
+        ? const Duration(milliseconds: 700)
+        : const Duration(milliseconds: 180);
+    _ocultarEsqueleto = Timer(espera, () {
+      primerCargaCompleta = true;
+      estado = EstadoMotorChat.listo;
+      notifyListeners();
+    });
+  }
+
+  Future<void> recargar() async {
     final controller = _controller;
-    if (controller != null) return controller.webviewWidget;
-    if (_error != null) {
-      return Center(child: Text('CEF no pudo iniciar: $_error'));
+    if (controller == null || !controller.value) {
+      _creacion = null;
+      primerCargaCompleta = false;
+      await crear();
+      return;
     }
-    return const Center(child: CircularProgressIndicator());
+
+    estado = EstadoMotorChat.cargando;
+    notifyListeners();
+    try {
+      await controller.reload();
+    } on Object catch (e) {
+      _error = e.toString();
+      estado = EstadoMotorChat.error;
+      notifyListeners();
+      rethrow;
+    }
   }
 
-  @override
-  void dispose() {
-    // WebviewManager es global y se conserva para futuros paneles. Solo se
-    // libera esta instancia; cerrar el manager terminaría otros WebViews.
-    _controller?.dispose();
+  Widget construirWidget() {
+    final controller = _controller;
+    if (controller == null) {
+      return const SizedBox.expand();
+    }
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: controller,
+      builder: (context, ready, _) {
+        if (!ready) {
+          return const SizedBox.expand();
+        }
+        return controller.webviewWidget;
+      },
+    );
+  }
+
+  /// No usar al salir de Chats. Cierra el navegador de este proveedor.
+  Future<void> disposeMotor() async {
+    _ocultarEsqueleto?.cancel();
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) {
+      await controller.dispose();
+    }
     super.dispose();
   }
 }
