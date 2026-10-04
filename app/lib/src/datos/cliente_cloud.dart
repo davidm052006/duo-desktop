@@ -42,6 +42,26 @@ class ProyectoCloud {
       );
 }
 
+
+class UsuarioCloudActual {
+  const UsuarioCloudActual({
+    required this.id,
+    required this.email,
+    required this.nombre,
+  });
+
+  final String id;
+  final String email;
+  final String? nombre;
+
+  factory UsuarioCloudActual.desdeJson(Map<String, dynamic> json) =>
+      UsuarioCloudActual(
+        id: '${json['id'] ?? json['userId'] ?? ''}',
+        email: '${json['email'] ?? ''}',
+        nombre: json['displayName'] == null ? null : '${json['displayName']}',
+      );
+}
+
 class MiembroCloud {
   const MiembroCloud({
     required this.id,
@@ -205,6 +225,16 @@ class ClienteCloud {
     }
 
     throw FalloCloud(mensaje, codigo: response.statusCode);
+  }
+
+
+  Future<UsuarioCloudActual> usuarioActual() async {
+    final response = await _enviar('GET', '/api/me');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FalloCloud('Respuesta inválida al cargar el usuario actual.');
+    }
+    return UsuarioCloudActual.desdeJson(decoded);
   }
 
   Future<List<ProyectoCloud>> proyectos() async {
