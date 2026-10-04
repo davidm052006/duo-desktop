@@ -1,0 +1,514 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using DuoDesktop.Cloud.Api;
+using DuoDesktop.Cloud.Auth;
+using DuoDesktop.Cloud.Data;
+using DuoDesktop.Cloud.Domain;
+using DuoDesktop.Cloud.Realtime;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+var connectionString = builder.Configuration.GetConnectionString("DuoCloud")
+    ?? throw new InvalidOperationException(
+        "Falta ConnectionStrings:DuoCloud. No pongas credenciales en appsettings.json.");
+
+builder.Services.AddDbContext<DuoCloudDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentUser>();
+builder.Services.AddSignalR();
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = builder.Configuration["Auth:Authority"];
+        options.Audience = builder.Configuration["Auth:Audience"] ?? "authenticated";
+        options.MapInboundClaims = false;
+    });
+
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "ok",
+    service = "duo-cloud",
+}));
+
+app.MapGet("/api/me", async (
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var user = await currentUser.GetOrCreateAsync(db, ct);
+    return Results.Ok(new
+    {
+        user.Id,
+        user.Email,
+        user.DisplayName,
+    });
+}).RequireAuthorization();
+
+app.MapGet("/api/projects", async (
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var user = await currentUser.GetOrCreateAsync(db, ct);
+
+    var projects = await db.ProjectMembers
+        .AsNoTracking()
+        .Where(x => x.UserId == user.Id)
+        .OrderBy(x => x.Project!.Name)
+        .Select(x => new
+        {
+            x.ProjectId,
+            x.Project!.Name,
+            x.Project.Slug,
+            x.Role,
+            x.Project.CreatedAt,
+        })
+        .ToListAsync(ct);
+
+    return Results.Ok(projects);
+}).RequireAuthorization();
+
+app.MapPost("/api/projects", async (
+    CreateProjectRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var name = request.Name?.Trim();
+    var slug = request.Slug?.Trim().ToLowerInvariant();
+
+    if (string.IsNullOrWhiteSpace(name))
+        return ApiError(422, "invalid_name", "El nombre del proyecto es obligatorio.");
+
+    if (string.IsNullOrWhiteSpace(slug) ||
+        !Regex.IsMatch(slug, "^[a-z0-9]+(?:-[a-z0-9]+)*$"))
+        return ApiError(422, "invalid_slug", "El slug solo admite minúsculas, números y guiones.");
+
+    if (await db.Projects.AnyAsync(x => x.Slug == slug, ct))
+        return ApiError(409, "slug_taken", "Ya existe un proyecto con ese slug.");
+
+    var user = await currentUser.GetOrCreateAsync(db, ct);
+    var now = DateTimeOffset.UtcNow;
+
+    var project = new Project
+    {
+        Id = Guid.NewGuid(),
+        Name = name,
+        Slug = slug,
+        OwnerUserId = user.Id,
+        CreatedAt = now,
+    };
+
+    db.Projects.Add(project);
+    db.ProjectMembers.Add(new ProjectMember
+    {
+        ProjectId = project.Id,
+        UserId = user.Id,
+        Role = ProjectRoles.Owner,
+        JoinedAt = now,
+    });
+
+    await db.SaveChangesAsync(ct);
+
+    return Results.Created($"/api/projects/{project.Id}", new
+    {
+        project.Id,
+        project.Name,
+        project.Slug,
+        role = ProjectRoles.Owner,
+        project.CreatedAt,
+    });
+}).RequireAuthorization();
+
+app.MapGet("/api/projects/{projectId:guid}/members", async (
+    Guid projectId,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+
+    var members = await db.ProjectMembers
+        .AsNoTracking()
+        .Where(x => x.ProjectId == projectId)
+        .OrderBy(x => x.JoinedAt)
+        .Select(x => new
+        {
+            x.UserId,
+            x.User!.Email,
+            x.User.DisplayName,
+            x.Role,
+            x.JoinedAt,
+        })
+        .ToListAsync(ct);
+
+    return Results.Ok(members);
+}).RequireAuthorization();
+
+app.MapPost("/api/projects/{projectId:guid}/invitations", async (
+    Guid projectId,
+    InviteMemberRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+    if (access.Value.Role != ProjectRoles.Owner)
+        return ApiError(403, "owner_required", "Solo el owner puede invitar miembros.");
+
+    var email = request.Email?.Trim().ToLowerInvariant();
+    var role = request.Role?.Trim().ToLowerInvariant();
+
+    if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+        return ApiError(422, "invalid_email", "Email inválido.");
+    if (role is null || !ProjectRoles.IsValid(role) || role == ProjectRoles.Owner)
+        return ApiError(422, "invalid_role", "Una invitación admite role editor o viewer.");
+
+    var now = DateTimeOffset.UtcNow;
+    var rawToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+    var tokenHash = Sha256(rawToken);
+
+    var invitation = new ProjectInvitation
+    {
+        Id = Guid.NewGuid(),
+        ProjectId = projectId,
+        EmailNormalized = email,
+        Role = role,
+        TokenHash = tokenHash,
+        InvitedByUserId = access.Value.User.Id,
+        CreatedAt = now,
+        ExpiresAt = now.AddDays(7),
+    };
+
+    db.ProjectInvitations.Add(invitation);
+    await db.SaveChangesAsync(ct);
+
+    // El token crudo se devuelve una sola vez. La DB solo conserva su hash.
+    return Results.Created($"/api/invitations/{invitation.Id}", new
+    {
+        invitation.Id,
+        invitation.ProjectId,
+        email,
+        role,
+        invitation.ExpiresAt,
+        inviteToken = rawToken,
+    });
+}).RequireAuthorization();
+
+app.MapPost("/api/invitations/{token}/accept", async (
+    string token,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    IHubContext<ProjectHub> hub,
+    CancellationToken ct) =>
+{
+    var user = await currentUser.GetOrCreateAsync(db, ct);
+    var hash = Sha256(token);
+    var now = DateTimeOffset.UtcNow;
+
+    var invitation = await db.ProjectInvitations
+        .SingleOrDefaultAsync(x => x.TokenHash == hash, ct);
+
+    if (invitation is null)
+        return ApiError(404, "invitation_not_found", "Invitación no encontrada.");
+    if (invitation.AcceptedAt is not null)
+        return ApiError(409, "invitation_used", "La invitación ya fue utilizada.");
+    if (invitation.ExpiresAt <= now)
+        return ApiError(410, "invitation_expired", "La invitación expiró.");
+    if (!string.Equals(invitation.EmailNormalized, user.Email, StringComparison.OrdinalIgnoreCase))
+        return ApiError(403, "invitation_email_mismatch", "La invitación pertenece a otro email.");
+
+    var exists = await db.ProjectMembers.AnyAsync(
+        x => x.ProjectId == invitation.ProjectId && x.UserId == user.Id,
+        ct);
+
+    if (!exists)
+    {
+        db.ProjectMembers.Add(new ProjectMember
+        {
+            ProjectId = invitation.ProjectId,
+            UserId = user.Id,
+            Role = invitation.Role,
+            JoinedAt = now,
+        });
+    }
+
+    invitation.AcceptedAt = now;
+    await db.SaveChangesAsync(ct);
+
+    await hub.Clients
+        .Group(ProjectHub.GroupName(invitation.ProjectId))
+        .SendAsync("member_joined", new
+        {
+            invitation.ProjectId,
+            user.Id,
+            user.Email,
+            user.DisplayName,
+            invitation.Role,
+            joinedAt = now,
+        }, ct);
+
+    return Results.Ok(new
+    {
+        invitation.ProjectId,
+        invitation.Role,
+    });
+}).RequireAuthorization();
+
+app.MapGet("/api/projects/{projectId:guid}/tasks", async (
+    Guid projectId,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+
+    var tasks = await db.Tasks
+        .AsNoTracking()
+        .Where(x => x.ProjectId == projectId)
+        .OrderBy(x => x.ExternalId)
+        .Select(x => new
+        {
+            x.Id,
+            x.ExternalId,
+            x.Title,
+            x.OwnerAgent,
+            x.Status,
+            x.Branch,
+            x.CreatedAt,
+            x.UpdatedAt,
+        })
+        .ToListAsync(ct);
+
+    return Results.Ok(tasks);
+}).RequireAuthorization();
+
+app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
+    Guid projectId,
+    UpsertTaskRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    IHubContext<ProjectHub> hub,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+    if (!ProjectRoles.CanWrite(access.Value.Role))
+        return ApiError(403, "write_forbidden", "Tu rol no permite modificar tareas.");
+
+    var externalId = request.ExternalId?.Trim();
+    var title = request.Title?.Trim();
+    var owner = request.OwnerAgent?.Trim();
+    var status = request.Status?.Trim();
+    var branch = request.Branch?.Trim();
+
+    if (new[] { externalId, title, owner, status, branch }.Any(string.IsNullOrWhiteSpace))
+        return ApiError(422, "invalid_task", "Todos los campos de la tarea son obligatorios.");
+
+    var now = DateTimeOffset.UtcNow;
+    var task = await db.Tasks.SingleOrDefaultAsync(
+        x => x.ProjectId == projectId && x.ExternalId == externalId,
+        ct);
+
+    if (task is null)
+    {
+        task = new CloudTask
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            ExternalId = externalId!,
+            Title = title!,
+            OwnerAgent = owner!,
+            Status = status!,
+            Branch = branch!,
+            CreatedByUserId = access.Value.User.Id,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.Tasks.Add(task);
+    }
+    else
+    {
+        task.Title = title!;
+        task.OwnerAgent = owner!;
+        task.Status = status!;
+        task.Branch = branch!;
+        task.UpdatedAt = now;
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    var dto = new
+    {
+        task.Id,
+        task.ProjectId,
+        task.ExternalId,
+        task.Title,
+        task.OwnerAgent,
+        task.Status,
+        task.Branch,
+        task.CreatedAt,
+        task.UpdatedAt,
+    };
+
+    await hub.Clients
+        .Group(ProjectHub.GroupName(projectId))
+        .SendAsync("task_changed", dto, ct);
+
+    return Results.Ok(dto);
+}).RequireAuthorization();
+
+app.MapGet("/api/projects/{projectId:guid}/events", async (
+    Guid projectId,
+    long? afterId,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+
+    var minId = afterId.GetValueOrDefault();
+    var events = await db.TaskEvents
+        .AsNoTracking()
+        .Where(x => x.ProjectId == projectId && x.Id > minId)
+        .OrderBy(x => x.Id)
+        .Take(500)
+        .Select(x => new
+        {
+            x.Id,
+            x.TaskId,
+            x.Type,
+            x.Agent,
+            x.PayloadJson,
+            x.ActorUserId,
+            x.CreatedAt,
+        })
+        .ToListAsync(ct);
+
+    return Results.Ok(events);
+}).RequireAuthorization();
+
+app.MapPost("/api/projects/{projectId:guid}/events", async (
+    Guid projectId,
+    AppendTaskEventRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    IHubContext<ProjectHub> hub,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+    if (!ProjectRoles.CanWrite(access.Value.Role))
+        return ApiError(403, "write_forbidden", "Tu rol no permite publicar eventos.");
+
+    var externalTaskId = request.ExternalTaskId?.Trim();
+    var type = request.Type?.Trim();
+    var agent = request.Agent?.Trim();
+    var payload = request.PayloadJson?.Trim();
+
+    if (string.IsNullOrWhiteSpace(externalTaskId) || string.IsNullOrWhiteSpace(type))
+        return ApiError(422, "invalid_event", "externalTaskId y type son obligatorios.");
+
+    if (!string.IsNullOrEmpty(payload))
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse(payload);
+        }
+        catch (JsonException)
+        {
+            return ApiError(422, "invalid_payload", "payloadJson debe ser JSON válido.");
+        }
+    }
+
+    var task = await db.Tasks.SingleOrDefaultAsync(
+        x => x.ProjectId == projectId && x.ExternalId == externalTaskId,
+        ct);
+
+    if (task is null)
+        return ApiError(404, "task_not_found", "La tarea no existe en el proyecto.");
+
+    var taskEvent = new TaskEvent
+    {
+        ProjectId = projectId,
+        TaskId = task.Id,
+        Type = type,
+        Agent = string.IsNullOrEmpty(agent) ? null : agent,
+        PayloadJson = string.IsNullOrEmpty(payload) ? null : payload,
+        ActorUserId = access.Value.User.Id,
+        CreatedAt = DateTimeOffset.UtcNow,
+    };
+
+    db.TaskEvents.Add(taskEvent);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new
+    {
+        taskEvent.Id,
+        taskEvent.ProjectId,
+        taskEvent.TaskId,
+        externalTaskId = task.ExternalId,
+        taskEvent.Type,
+        taskEvent.Agent,
+        taskEvent.PayloadJson,
+        taskEvent.ActorUserId,
+        taskEvent.CreatedAt,
+    };
+
+    await hub.Clients
+        .Group(ProjectHub.GroupName(projectId))
+        .SendAsync("task_event", dto, ct);
+
+    return Results.Created($"/api/projects/{projectId}/events/{taskEvent.Id}", dto);
+}).RequireAuthorization();
+
+app.MapHub<ProjectHub>("/hubs/projects");
+
+app.Run();
+
+static async Task<(UserProfile User, string Role)?> ProjectAccessAsync(
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    Guid projectId,
+    CancellationToken ct)
+{
+    var user = await currentUser.GetOrCreateAsync(db, ct);
+    var role = await db.ProjectMembers
+        .Where(x => x.ProjectId == projectId && x.UserId == user.Id)
+        .Select(x => x.Role)
+        .SingleOrDefaultAsync(ct);
+
+    return role is null ? null : (user, role);
+}
+
+static string Sha256(string value) =>
+    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+        .ToLowerInvariant();
+
+static IResult ApiError(int status, string code, string message) =>
+    Results.Json(new
+    {
+        error = new { code, message },
+    }, statusCode: status);
+
+public partial class Program;
