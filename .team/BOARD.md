@@ -2,7 +2,6 @@
 
 | Tarea | Título | Dueño | Rama | Estado | Abierta |
 |-------|--------|-------|------|--------|---------|
-| T-029 | Diagnóstico local: comprobar POST /tasks. | `cc` | `cc/t-029-diagnostico-local-comprobar-post-tasks` | abierta | 2026-10-03 |
 | T-028 | probando funciones no toques nada | `cc` | `cc/t-028-probando-funciones-no-toques-nada` | abierta | 2026-10-03 |
 | T-027 | Prueba de owner nuevo para validación Phase 2. | `codex` | `codex/t-027-prueba-de-owner-nuevo-para-validacion-ph` | abierta | 2026-10-03 |
 | T-026 | Prueba E2E breve: confirmar board_changed y salida de sesión. | `codex` | `codex/t-026-prueba-e2e-breve-confirmar-board-changed` | abierta | 2026-10-03 |
