@@ -911,10 +911,8 @@ class _DialogPullRequestState extends State<_DialogPullRequest> {
   late final TextEditingController _url;
   late final TextEditingController _origen;
   late final TextEditingController _destino;
-  final _mergedBy = TextEditingController();
   String _estado = 'open';
   String _revision = 'approved';
-  bool _confirmarMerge = false;
   bool _enviando = false;
   String? _error;
 
@@ -940,7 +938,6 @@ class _DialogPullRequestState extends State<_DialogPullRequest> {
     _url.dispose();
     _origen.dispose();
     _destino.dispose();
-    _mergedBy.dispose();
     super.dispose();
   }
 
@@ -953,11 +950,6 @@ class _DialogPullRequestState extends State<_DialogPullRequest> {
         _enviando) {
       return;
     }
-    if (_confirmarMerge && _mergedBy.text.trim().isEmpty) {
-      setState(() => _error = 'Indica quién confirmó el merge.');
-      return;
-    }
-
     setState(() {
       _enviando = true;
       _error = null;
@@ -972,8 +964,8 @@ class _DialogPullRequestState extends State<_DialogPullRequest> {
         targetBranch: _destino.text.trim(),
         state: _estado,
         reviewState: _revision,
-        mergedAt: _confirmarMerge ? DateTime.now() : null,
-        mergedByLogin: _confirmarMerge ? _mergedBy.text.trim() : null,
+        mergedAt: null,
+        mergedByLogin: null,
       );
       if (mounted) {
         Navigator.pop(context, true);
@@ -1048,20 +1040,11 @@ class _DialogPullRequestState extends State<_DialogPullRequest> {
                 ),
                 if (widget.esOwner) ...[
                   const SizedBox(height: 12),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Confirmar merge'),
-                    subtitle: const Text('Solo owner; registra fecha y autor del merge.'),
-                    value: _confirmarMerge,
-                    onChanged: _enviando
-                        ? null
-                        : (value) => setState(() => _confirmarMerge = value),
+                  Text(
+                    'El merge no se confirma manualmente aquí. Usa “Sincronizar GitHub” '
+                    'en la tarea para leer mergedAt real desde gh.',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  if (_confirmarMerge)
-                    TextField(
-                      controller: _mergedBy,
-                      decoration: const InputDecoration(labelText: 'Merged by login'),
-                    ),
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
