@@ -14,6 +14,7 @@ builder.Services.AddSingleton<GitHubReader>();
 builder.Services.AddSingleton<DuoCommandRunner>();
 builder.Services.AddSingleton<IExecutableLocator, PathExecutableLocator>();
 builder.Services.AddSingleton<AgentCapabilitiesReader>();
+builder.Services.AddSingleton<GitWorkspaceService>();
 
 var app = builder.Build();
 app.UseWebSockets();
@@ -196,6 +197,188 @@ app.MapPost("/questions/{id}/answer", async (HttpContext ctx, string id, AnswerQ
     {
         log.LogError(e, "POST /questions/{Id}/answer → 500 inesperado", id);
         return Error(500, "duo_command_failed", "No se pudo enviar la respuesta al agente.");
+    }
+});
+
+
+app.MapPost("/git/repository", async (
+    HttpContext ctx,
+    ConfigureRepositoryRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        var mapping = await workspaces.ConfigureRepositoryAsync(
+            request?.ProjectId ?? "",
+            request?.ProjectSlug ?? "",
+            request?.RepositoryFullName ?? "",
+            request?.RepositoryPath ?? "",
+            ct);
+        return Results.Ok(mapping);
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapPost("/git/workspaces/prepare", async (
+    HttpContext ctx,
+    PrepareWorkspaceRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        var workspace = await workspaces.PrepareAsync(
+            request?.ProjectId ?? "",
+            request?.ExternalId ?? "",
+            request?.TaskTitle ?? "",
+            request?.TargetBranch ?? "",
+            request?.Provider ?? "",
+            ct);
+        return Results.Ok(workspace);
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapGet("/git/workspaces/{workspaceId}/status", async (
+    HttpContext ctx,
+    string workspaceId,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(await workspaces.StatusAsync(workspaceId, ct));
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapPost("/git/workspaces/commit", async (
+    HttpContext ctx,
+    CommitWorkspaceRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        var result = await workspaces.CommitAsync(
+            request?.WorkspaceId ?? "",
+            request?.Files ?? [],
+            request?.Message ?? "",
+            ct);
+        return Results.Ok(result);
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapPost("/git/workspaces/push", async (
+    HttpContext ctx,
+    PushWorkspaceRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        await workspaces.PushAsync(request?.WorkspaceId ?? "", ct);
+        return Results.Ok();
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapPost("/git/workspaces/agent", async (
+    HttpContext ctx,
+    LaunchAgentRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        await workspaces.LaunchAgentAsync(
+            request?.WorkspaceId ?? "",
+            request?.Provider ?? "",
+            ct);
+        return Results.Ok();
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapPost("/git/workspaces/pr", async (
+    HttpContext ctx,
+    PullRequestWorkspaceRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        var pr = await workspaces.FindOrCreatePullRequestAsync(
+            request?.WorkspaceId ?? "",
+            request?.Title ?? "",
+            request?.Body ?? "",
+            ct);
+        return Results.Ok(pr);
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapGet("/git/workspaces/{workspaceId}/pr/{number:int}", async (
+    HttpContext ctx,
+    string workspaceId,
+    int number,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(await workspaces.PullRequestStatusAsync(workspaceId, number, ct));
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
     }
 });
 
