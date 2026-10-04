@@ -4,6 +4,7 @@ import '../config_cloud.dart';
 import '../datos/cliente_cloud.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
+import 'pantalla_proyecto_cloud.dart';
 
 class PantallaProyectos extends StatefulWidget {
   const PantallaProyectos({super.key});
@@ -206,11 +207,9 @@ class _TarjetaProyecto extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Siguiente paso: abrir workspace cloud de ${proyecto.nombre}.',
-              ),
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => PantallaProyectoCloud(proyecto: proyecto),
             ),
           );
         },
