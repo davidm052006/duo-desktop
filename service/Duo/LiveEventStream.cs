@@ -8,7 +8,11 @@ namespace DuoDesktop.Service.Duo;
 /// Convierte los archivos que duo ya mantiene en una secuencia WebSocket. El
 /// CLI continúa siendo el dueño de los procesos; aquí solo se siguen los
 /// apéndices de sesión y el estado publicado de la pizarra.
-public sealed class LiveEventStream(DuoProjectLocator locator, BoardReader boardReader, ILogger<LiveEventStream> log)
+public sealed class LiveEventStream(
+    DuoProjectLocator locator,
+    BoardReader boardReader,
+    TaskOwnerHistoryReader ownerHistory,
+    ILogger<LiveEventStream> log)
 {
     private static readonly Regex SessionFile = new(@"^(?<id>T-\d+)\.txt$", RegexOptions.Compiled);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(350);
@@ -19,6 +23,19 @@ public sealed class LiveEventStream(DuoProjectLocator locator, BoardReader board
         var project = locator.Active();
         string? previousBoardJson = null;
         var positions = new Dictionary<string, long>(StringComparer.Ordinal);
+        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (Directory.Exists(project.SessionsDir))
+        {
+            var sessionIds = Directory.EnumerateFiles(project.SessionsDir, "*.txt")
+                .Select(Path.GetFileNameWithoutExtension)
+                .Where(id => id is not null && id.StartsWith("T-", StringComparison.Ordinal))
+                .Cast<string>()
+                .ToArray();
+
+            foreach (var pair in ownerHistory.Read(project, sessionIds))
+                owners[pair.Key] = pair.Value;
+        }
 
         while (!cancellationToken.IsCancellationRequested && socket.State == WebSocketState.Open)
         {
@@ -36,7 +53,10 @@ public sealed class LiveEventStream(DuoProjectLocator locator, BoardReader board
                     previousBoardJson = boardJson;
                 }
 
-                await SendSessionAppendsAsync(socket, project, board, positions, cancellationToken);
+                foreach (var task in board.Board.Tasks)
+                    owners[task.Id] = task.Owner;
+
+                await SendSessionAppendsAsync(socket, project, owners, positions, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -73,13 +93,12 @@ public sealed class LiveEventStream(DuoProjectLocator locator, BoardReader board
     private static async Task SendSessionAppendsAsync(
         WebSocket socket,
         DuoProject project,
-        BoardResponse board,
+        IReadOnlyDictionary<string, string> owners,
         Dictionary<string, long> positions,
         CancellationToken cancellationToken)
     {
         if (!Directory.Exists(project.SessionsDir)) return;
 
-        var agents = board.Board.Tasks.ToDictionary(task => task.Id, task => task.Owner, StringComparer.Ordinal);
         var liveFiles = new HashSet<string>(StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(project.SessionsDir, "*.txt").OrderBy(path => path))
         {
@@ -111,7 +130,7 @@ public sealed class LiveEventStream(DuoProjectLocator locator, BoardReader board
             if (bytes.Length == 0) continue;
 
             var id = match.Groups["id"].Value;
-            agents.TryGetValue(id, out var agent);
+            owners.TryGetValue(id, out var agent);
             await SendEventAsync(socket, new AgentOutputEvent("agent_output", id, agent, Encoding.UTF8.GetString(bytes)), cancellationToken);
         }
 
