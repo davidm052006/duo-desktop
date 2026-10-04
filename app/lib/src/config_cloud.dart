@@ -1,12 +1,19 @@
-abstract final class ConfigCloud {
-  static const url = String.fromEnvironment('DUO_CLOUD_URL');
+import 'dart:io';
 
-  static bool get configurado => url.trim().isNotEmpty;
+abstract final class ConfigCloud {
+  static const _urlCompilada = String.fromEnvironment('DUO_CLOUD_URL');
+
+  static String get url {
+    final runtime = Platform.environment['DUO_CLOUD_URL']?.trim() ?? '';
+    return runtime.isNotEmpty ? runtime : _urlCompilada.trim();
+  }
+
+  static bool get configurado => url.isNotEmpty;
 
   static Uri endpoint(String path) {
     if (!configurado) {
       throw StateError(
-        'Falta DUO_CLOUD_URL. Inicia Flutter con --dart-define=DUO_CLOUD_URL=...',
+        'Falta DUO_CLOUD_URL. Configura DUO_CLOUD_URL en el entorno o al compilar.',
       );
     }
 
