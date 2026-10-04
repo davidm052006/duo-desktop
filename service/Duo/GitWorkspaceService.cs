@@ -47,6 +47,12 @@ public sealed class GitWorkspaceService(IExecutableLocator executables, ILogger<
         return state.Repositories[projectId];
     }
 
+    public async Task<RepositoryMapping?> RepositoryAsync(string projectId, CancellationToken ct)
+    {
+        var state = await LoadAsync(ct);
+        return state.Repositories.TryGetValue(projectId, out var repo) ? repo : null;
+    }
+
     public async Task<WorkspaceInfo> PrepareAsync(
         string projectId,
         string externalId,
