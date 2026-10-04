@@ -76,6 +76,8 @@ app.MapGet("/api/projects", async (
             x.ProjectId,
             x.Project!.Name,
             x.Project.Slug,
+            x.Project.RepositoryFullName,
+            x.Project.TargetBranch,
             x.Role,
             x.Project.CreatedAt,
         })
@@ -92,6 +94,8 @@ app.MapPost("/api/projects", async (
 {
     var name = request.Name?.Trim();
     var slug = request.Slug?.Trim().ToLowerInvariant();
+    var repository = request.RepositoryFullName?.Trim();
+    var targetBranch = request.TargetBranch?.Trim();
 
     if (string.IsNullOrWhiteSpace(name))
         return ApiError(422, "invalid_name", "El nombre del proyecto es obligatorio.");
@@ -99,6 +103,13 @@ app.MapPost("/api/projects", async (
     if (string.IsNullOrWhiteSpace(slug) ||
         !Regex.IsMatch(slug, "^[a-z0-9]+(?:-[a-z0-9]+)*$"))
         return ApiError(422, "invalid_slug", "El slug solo admite minúsculas, números y guiones.");
+
+    if (string.IsNullOrWhiteSpace(repository) ||
+        !Regex.IsMatch(repository, "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))
+        return ApiError(422, "invalid_repository", "Usa owner/repositorio para GitHub.");
+
+    if (string.IsNullOrWhiteSpace(targetBranch))
+        targetBranch = "develop";
 
     if (await db.Projects.AnyAsync(x => x.Slug == slug, ct))
         return ApiError(409, "slug_taken", "Ya existe un proyecto con ese slug.");
@@ -112,6 +123,8 @@ app.MapPost("/api/projects", async (
         Name = name,
         Slug = slug,
         OwnerUserId = user.Id,
+        RepositoryFullName = repository,
+        TargetBranch = targetBranch,
         CreatedAt = now,
     };
 
@@ -131,6 +144,8 @@ app.MapPost("/api/projects", async (
         project.Id,
         project.Name,
         project.Slug,
+        project.RepositoryFullName,
+        project.TargetBranch,
         role = ProjectRoles.Owner,
         project.CreatedAt,
     });
@@ -294,6 +309,19 @@ app.MapGet("/api/projects/{projectId:guid}/tasks", async (
             x.OwnerAgent,
             x.Status,
             x.Branch,
+            x.AssignedUserId,
+            assignedEmail = x.AssignedUser != null ? x.AssignedUser.Email : null,
+            x.WorkProvider,
+            pullRequest = x.PullRequest == null ? null : new
+            {
+                x.PullRequest.GitHubNumber,
+                x.PullRequest.Url,
+                x.PullRequest.SourceBranch,
+                x.PullRequest.TargetBranch,
+                x.PullRequest.State,
+                x.PullRequest.ReviewState,
+                x.PullRequest.MergedAt,
+            },
             x.CreatedAt,
             x.UpdatedAt,
         })
@@ -318,11 +346,27 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
     var externalId = request.ExternalId?.Trim();
     var title = request.Title?.Trim();
     var owner = request.OwnerAgent?.Trim();
-    var status = request.Status?.Trim();
+    var status = request.Status?.Trim().ToLowerInvariant();
     var branch = request.Branch?.Trim();
+    var workProvider = request.WorkProvider?.Trim().ToLowerInvariant();
 
-    if (new[] { externalId, title, owner, status, branch }.Any(string.IsNullOrWhiteSpace))
-        return ApiError(422, "invalid_task", "Todos los campos de la tarea son obligatorios.");
+    if (new[] { externalId, title, owner, status, branch, workProvider }.Any(string.IsNullOrWhiteSpace))
+        return ApiError(422, "invalid_task", "Los campos base de la tarea son obligatorios.");
+
+    if (!TaskStatuses.IsValid(status!))
+        return ApiError(422, "invalid_status", "Estado de tarea no soportado.");
+
+    if (!WorkProviders.IsValid(workProvider!))
+        return ApiError(422, "invalid_provider", "Proveedor de trabajo no soportado.");
+
+    if (request.AssignedUserId is not null)
+    {
+        var assignedIsMember = await db.ProjectMembers.AnyAsync(
+            x => x.ProjectId == projectId && x.UserId == request.AssignedUserId,
+            ct);
+        if (!assignedIsMember)
+            return ApiError(422, "assignee_not_member", "El usuario asignado no pertenece al proyecto.");
+    }
 
     var now = DateTimeOffset.UtcNow;
     var task = await db.Tasks.SingleOrDefaultAsync(
@@ -340,6 +384,8 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
             OwnerAgent = owner!,
             Status = status!,
             Branch = branch!,
+            AssignedUserId = request.AssignedUserId,
+            WorkProvider = workProvider!,
             CreatedByUserId = access.Value.User.Id,
             CreatedAt = now,
             UpdatedAt = now,
@@ -352,6 +398,8 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
         task.OwnerAgent = owner!;
         task.Status = status!;
         task.Branch = branch!;
+        task.AssignedUserId = request.AssignedUserId;
+        task.WorkProvider = workProvider!;
         task.UpdatedAt = now;
     }
 
@@ -366,6 +414,8 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
         task.OwnerAgent,
         task.Status,
         task.Branch,
+        task.AssignedUserId,
+        task.WorkProvider,
         task.CreatedAt,
         task.UpdatedAt,
     };
@@ -373,6 +423,143 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
     await hub.Clients
         .Group(ProjectHub.GroupName(projectId))
         .SendAsync("task_changed", dto, ct);
+
+    return Results.Ok(dto);
+}).RequireAuthorization();
+
+
+app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/pull-request", async (
+    Guid projectId,
+    string externalId,
+    UpsertPullRequestRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    IHubContext<ProjectHub> hub,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+    if (!ProjectRoles.CanWrite(access.Value.Role))
+        return ApiError(403, "write_forbidden", "Tu rol no permite actualizar pull requests.");
+
+    var project = await db.Projects.SingleAsync(x => x.Id == projectId, ct);
+    var task = await db.Tasks
+        .Include(x => x.PullRequest)
+        .SingleOrDefaultAsync(
+            x => x.ProjectId == projectId && x.ExternalId == externalId,
+            ct);
+
+    if (task is null)
+        return ApiError(404, "task_not_found", "La tarea no existe en el proyecto.");
+
+    var url = request.Url?.Trim();
+    var sourceBranch = request.SourceBranch?.Trim();
+    var targetBranch = request.TargetBranch?.Trim();
+    var state = request.State?.Trim().ToLowerInvariant();
+    var reviewState = request.ReviewState?.Trim().ToLowerInvariant();
+
+    if (request.GitHubNumber <= 0 ||
+        string.IsNullOrWhiteSpace(url) ||
+        string.IsNullOrWhiteSpace(sourceBranch) ||
+        string.IsNullOrWhiteSpace(targetBranch) ||
+        string.IsNullOrWhiteSpace(state))
+        return ApiError(422, "invalid_pull_request", "Datos de pull request incompletos.");
+
+    if (request.MergedAt is not null && access.Value.Role != ProjectRoles.Owner)
+        return ApiError(403, "owner_required_for_merge", "Solo el owner puede confirmar un merge desde Duo.");
+
+    var now = DateTimeOffset.UtcNow;
+    var pullRequest = task.PullRequest ?? new PullRequest
+    {
+        Id = Guid.NewGuid(),
+        ProjectId = projectId,
+        TaskId = task.Id,
+        GitHubNumber = request.GitHubNumber,
+        Url = url!,
+        SourceBranch = sourceBranch!,
+        TargetBranch = targetBranch!,
+        State = state!,
+        UpdatedAt = now,
+    };
+
+    pullRequest.GitHubNumber = request.GitHubNumber;
+    pullRequest.Url = url!;
+    pullRequest.SourceBranch = sourceBranch!;
+    pullRequest.TargetBranch = targetBranch!;
+    pullRequest.State = state!;
+    pullRequest.ReviewState = string.IsNullOrWhiteSpace(reviewState) ? null : reviewState;
+    pullRequest.MergedAt = request.MergedAt;
+    pullRequest.MergedByLogin = request.MergedByLogin?.Trim();
+    pullRequest.UpdatedAt = now;
+
+    if (task.PullRequest is null)
+        db.PullRequests.Add(pullRequest);
+
+    var mergedToTarget = request.MergedAt is not null &&
+        string.Equals(targetBranch, project.TargetBranch, StringComparison.Ordinal);
+
+    task.Status = mergedToTarget
+        ? TaskStatuses.Finalized
+        : TaskStatuses.InReview;
+    task.UpdatedAt = now;
+
+    db.TaskEvents.Add(new TaskEvent
+    {
+        ProjectId = projectId,
+        TaskId = task.Id,
+        Type = mergedToTarget ? "pull_request_merged" : "pull_request_updated",
+        Agent = task.WorkProvider,
+        PayloadJson = JsonSerializer.Serialize(new
+        {
+            request.GitHubNumber,
+            Url = url,
+            SourceBranch = sourceBranch,
+            TargetBranch = targetBranch,
+            State = state,
+            ReviewState = reviewState,
+            request.MergedAt,
+            request.MergedByLogin,
+        }),
+        ActorUserId = access.Value.User.Id,
+        CreatedAt = now,
+    });
+
+    await db.SaveChangesAsync(ct);
+
+    var dto = new
+    {
+        task.ExternalId,
+        task.Status,
+        pullRequest.GitHubNumber,
+        pullRequest.Url,
+        pullRequest.SourceBranch,
+        pullRequest.TargetBranch,
+        pullRequest.State,
+        pullRequest.ReviewState,
+        pullRequest.MergedAt,
+        pullRequest.MergedByLogin,
+    };
+
+    await hub.Clients
+        .Group(ProjectHub.GroupName(projectId))
+        .SendAsync("pull_request_changed", dto, ct);
+
+    await hub.Clients
+        .Group(ProjectHub.GroupName(projectId))
+        .SendAsync("task_changed", new
+        {
+            task.Id,
+            task.ProjectId,
+            task.ExternalId,
+            task.Title,
+            task.OwnerAgent,
+            task.Status,
+            task.Branch,
+            task.AssignedUserId,
+            task.WorkProvider,
+            task.CreatedAt,
+            task.UpdatedAt,
+        }, ct);
 
     return Results.Ok(dto);
 }).RequireAuthorization();
