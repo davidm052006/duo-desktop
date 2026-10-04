@@ -24,11 +24,12 @@ $listener.Stop()
 $token = [guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")
 $env:DUO_SERVICE_PORT = "$port"
 $env:DUO_TOKEN = $token
+$serviceLog = Join-Path $root "duo-service.log"
 
 Write-Host "Iniciando Duo Desktop..." -ForegroundColor Cyan
 
 $serviceArgs = @("--urls", "http://127.0.0.1:$port")
-$serviceProcess = Start-Process -FilePath $service -ArgumentList $serviceArgs -WorkingDirectory (Split-Path -Parent $service) -WindowStyle Hidden -PassThru
+$serviceProcess = Start-Process -FilePath $service -ArgumentList $serviceArgs -WorkingDirectory (Split-Path -Parent $service) -WindowStyle Hidden -RedirectStandardOutput $serviceLog -RedirectStandardError "$serviceLog.err" -PassThru
 
 try {
   $deadline = [DateTime]::UtcNow.AddSeconds(12)
@@ -51,6 +52,9 @@ try {
 
   $appProcess = Start-Process -FilePath $app -WorkingDirectory (Split-Path -Parent $app) -PassThru
   $appProcess.WaitForExit()
+  if ($appProcess.ExitCode -ne 0) {
+    throw "La aplicacion termino con codigo $($appProcess.ExitCode). Revisa duo-service.log en esta carpeta."
+  }
 }
 catch {
   Write-Host ""
