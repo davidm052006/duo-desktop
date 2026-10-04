@@ -33,6 +33,17 @@ if test (count $sin_integrar) -gt 0
 end
 echo ""
 
+# Configuración pública de Supabase para Auth. No es una credencial de servidor,
+# pero se mantiene fuera del repo para poder cambiar de proyecto sin recompilar.
+if not set -q SUPABASE_URL; or test -z "$SUPABASE_URL"
+    set_color red; echo "Falta SUPABASE_URL en el entorno."; set_color normal
+    exit 1
+end
+if not set -q SUPABASE_PUBLISHABLE_KEY; or test -z "$SUPABASE_PUBLISHABLE_KEY"
+    set_color red; echo "Falta SUPABASE_PUBLISHABLE_KEY en el entorno."; set_color normal
+    exit 1
+end
+
 # Puerto efímero y token compartido: el servicio solo acepta a quien lo sepa.
 set -l port (python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
 set -l token (uuidgen)
@@ -54,7 +65,11 @@ if test -d $raiz/app
     set_color cyan; echo "── app Flutter"; set_color normal
     cd $raiz/app
     DUO_SERVICE_URL="http://127.0.0.1:$port" DUO_TOKEN=$token \
-        flutter run -d linux --dart-define=SERVICE_PORT=$port --dart-define=TOKEN=$token
+        flutter run -d linux \
+        --dart-define=SERVICE_PORT=$port \
+        --dart-define=TOKEN=$token \
+        --dart-define=SUPABASE_URL=$SUPABASE_URL \
+        --dart-define=SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
 else
     set_color yellow; echo "app/ no existe todavía; solo el servicio está arriba."; set_color normal
     echo "Pruébalo:  curl -H \"Authorization: Bearer $token\" http://127.0.0.1:$port/board"
