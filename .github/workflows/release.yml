@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -18,6 +21,7 @@ env:
 jobs:
   linux:
     name: Build Linux
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -220,7 +224,7 @@ jobs:
     name: Publish GitHub Release
     needs: [linux, windows]
     runs-on: ubuntu-24.04
-    if: success()
+    if: startsWith(github.ref, 'refs/tags/') && success()
 
     steps:
       - name: Checkout (for release notes context)
