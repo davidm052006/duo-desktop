@@ -6,9 +6,14 @@ import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
 
 class PantallaProyectoCloud extends StatefulWidget {
-  const PantallaProyectoCloud({super.key, required this.proyecto});
+  const PantallaProyectoCloud({
+    super.key,
+    required this.proyecto,
+    required this.volver,
+  });
 
   final ProyectoCloud proyecto;
+  final VoidCallback volver;
 
   @override
   State<PantallaProyectoCloud> createState() => _PantallaProyectoCloudState();
@@ -89,7 +94,7 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
             children: [
               IconButton(
                 tooltip: 'Volver a proyectos',
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: widget.volver,
                 icon: const Icon(Icons.arrow_back_rounded),
               ),
               const SizedBox(width: 8),
