@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../datos/cliente_duo.dart';
 import '../datos/cliente_cloud.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
@@ -658,17 +659,58 @@ class _DialogTareaState extends State<_DialogTarea> {
   final _id = TextEditingController();
   final _titulo = TextEditingController();
   final _rama = TextEditingController();
+  final _duo = ClienteDuo();
   String? _asignado;
   String _provider = 'chatgpt';
   bool _enviando = false;
   String? _error;
+  late final Future<List<CapacidadAgenteLocal>> _capacidades;
+
+  @override
+  void initState() {
+    super.initState();
+    _capacidades = _duo.capacidadesAgentes();
+  }
 
   @override
   void dispose() {
     _id.dispose();
     _titulo.dispose();
     _rama.dispose();
+    _duo.cierra();
     super.dispose();
+  }
+
+  Widget _disponibilidadLocal() {
+    if (_provider == 'chatgpt' || _provider == 'grok') {
+      return const Text('Proveedor web: se abre en el chat CEF.');
+    }
+    return FutureBuilder<List<CapacidadAgenteLocal>>(
+      future: _capacidades,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Text('Comprobando disponibilidad en este dispositivo…');
+        }
+        if (snapshot.hasError) {
+          return Text(
+            'No se pudo comprobar la disponibilidad en este dispositivo.',
+            style: TextStyle(color: context.paleta.aviso),
+          );
+        }
+        final capacidad = (snapshot.data ?? const <CapacidadAgenteLocal>[])
+            .where((item) => item.provider == _provider)
+            .firstOrNull;
+        final disponible = capacidad?.disponible == true;
+        return Text(
+          disponible
+              ? 'Disponible en este dispositivo'
+              : 'No detectado en este dispositivo',
+          style: TextStyle(
+            color: disponible ? context.paleta.bien : context.paleta.tintaTenue,
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _crear() async {
@@ -767,6 +809,11 @@ class _DialogTareaState extends State<_DialogTarea> {
                   onChanged: (value) {
                     if (value != null) setState(() => _provider = value);
                   },
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _disponibilidadLocal(),
                 ),
                 const SizedBox(height: 12),
                 TextField(

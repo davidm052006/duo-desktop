@@ -6,6 +6,7 @@ import '../modelos/resumen.dart';
 import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/panel_fallo.dart';
+import '../widgets/capacidades_agentes_locales.dart';
 import '../widgets/tarjeta.dart';
 
 /// Agentes: una ficha por agente con su carga, su última actividad y las tareas
@@ -64,7 +65,9 @@ class _Contenido extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, caja) {
-        final columnas = caja.maxWidth - _margen * 2 >= _anchoDosColumnas ? 2 : 1;
+        final columnas = caja.maxWidth - _margen * 2 >= _anchoDosColumnas
+            ? 2
+            : 1;
         final fichas = [
           for (final a in resumen.agentes)
             _Ficha(
@@ -84,6 +87,8 @@ class _Contenido extends StatelessWidget {
           children: [
             _Cabecera(resumen: resumen, estado: estado),
             const SizedBox(height: 22),
+            const CapacidadesAgentesLocales(),
+            const SizedBox(height: 18),
             if (fichas.isEmpty)
               _SinAgentes()
             else
@@ -140,9 +145,15 @@ class _Cabecera extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text('Agentes', style: textos.headlineSmall?.copyWith(fontSize: 26)),
+                  Text(
+                    'Agentes',
+                    style: textos.headlineSmall?.copyWith(fontSize: 26),
+                  ),
                   const SizedBox(width: 12),
-                  Insignia('${resumen.activos} con tarea', tono: paleta.acentoAlt),
+                  Insignia(
+                    '${resumen.activos} con tarea',
+                    tono: paleta.acentoAlt,
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -153,7 +164,9 @@ class _Cabecera extends StatelessWidget {
                   Text(
                     '${resumen.agentes.length} en el ledger · '
                     '${resumen.activas} tarea(s) sin cerrar repartidas',
-                    style: textos.bodySmall?.copyWith(color: paleta.tintaSecundaria),
+                    style: textos.bodySmall?.copyWith(
+                      color: paleta.tintaSecundaria,
+                    ),
                   ),
                   const SizedBox(width: 14),
                   Text(
@@ -243,7 +256,11 @@ class _Ficha extends StatelessWidget {
               const SizedBox(width: 9),
               Flexible(child: Text(agente.nombre, style: textos.titleMedium)),
               const SizedBox(width: 8),
-              Insignia('alias: ${agente.alias}', tono: paleta.tintaSecundaria, mono: true),
+              Insignia(
+                'alias: ${agente.alias}',
+                tono: paleta.tintaSecundaria,
+                mono: true,
+              ),
               const Spacer(),
               if (ledger == null)
                 Insignia('fuera del ledger', tono: paleta.aviso),
@@ -265,7 +282,11 @@ class _Ficha extends StatelessWidget {
 /// contado. Son dos cifras distintas y se dicen por separado: la barra es
 /// reparto de *ahora*, el acumulado es histórico.
 class _Carga extends StatelessWidget {
-  const _Carga({required this.agente, required this.ledger, required this.color});
+  const _Carga({
+    required this.agente,
+    required this.ledger,
+    required this.color,
+  });
 
   final ResumenAgente agente;
   final CargaAgente? ledger;
@@ -307,7 +328,7 @@ class _Carga extends StatelessWidget {
           ledger == null
               ? 'Sin acumulado: no figura en ledger.agents.'
               : 'Acumulado en el ledger: ${ledger!.puntos} pts · '
-                  '${ledger!.tareas} tarea(s) contabilizada(s).',
+                    '${ledger!.tareas} tarea(s) contabilizada(s).',
           style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
         ),
       ],
@@ -342,14 +363,20 @@ class _UltimaActividad extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    ultima == null ? Icons.remove : Icons.event_available_outlined,
+                    ultima == null
+                        ? Icons.remove
+                        : Icons.event_available_outlined,
                     size: 14,
                     color: ultima == null ? paleta.tintaTenue : paleta.bien,
                   ),
                   const SizedBox(width: 7),
                   Mono(
-                    ultima == null ? 'sin actividad registrada' : _fecha(ultima),
-                    color: ultima == null ? paleta.tintaTenue : paleta.tintaSecundaria,
+                    ultima == null
+                        ? 'sin actividad registrada'
+                        : _fecha(ultima),
+                    color: ultima == null
+                        ? paleta.tintaTenue
+                        : paleta.tintaSecundaria,
                     peso: FontWeight.w600,
                   ),
                 ],

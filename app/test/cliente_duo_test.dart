@@ -81,7 +81,9 @@ void main() {
       (500, 'board_read_failed'),
     ]) {
       test('$status llega a la UI como $codigo', () async {
-        final cliente = _cliente((_) async => http.Response(_error(codigo), status));
+        final cliente = _cliente(
+          (_) async => http.Response(_error(codigo), status),
+        );
         await expectLater(
           cliente.tablero(),
           throwsA(isA<FalloDuo>().having((e) => e.codigo, 'codigo', codigo)),
@@ -99,10 +101,18 @@ void main() {
   });
 
   test('servicio caído: un código propio, no una excepción cruda', () async {
-    final cliente = _cliente((_) async => throw const SocketException('nada escuchando'));
+    final cliente = _cliente(
+      (_) async => throw const SocketException('nada escuchando'),
+    );
     await expectLater(
       cliente.tablero(),
-      throwsA(isA<FalloDuo>().having((e) => e.codigo, 'codigo', 'service_unreachable')),
+      throwsA(
+        isA<FalloDuo>().having(
+          (e) => e.codigo,
+          'codigo',
+          'service_unreachable',
+        ),
+      ),
     );
   });
 
@@ -110,7 +120,51 @@ void main() {
     final cliente = _cliente((_) async => http.Response('{"board":{}}', 200));
     await expectLater(
       cliente.tablero(),
-      throwsA(isA<FalloDuo>().having((e) => e.codigo, 'codigo', 'contrato_roto')),
+      throwsA(
+        isA<FalloDuo>().having((e) => e.codigo, 'codigo', 'contrato_roto'),
+      ),
     );
   });
+
+  test(
+    'capacidades locales usa el endpoint protegido y no inventa proveedores web',
+    () async {
+      Uri? pedida;
+      String? autorizacion;
+      final cliente = _cliente((request) async {
+        pedida = request.url;
+        autorizacion = request.headers['Authorization'];
+        return http.Response(
+          jsonEncode({
+            'agents': [
+              {
+                'provider': 'codex',
+                'available': true,
+                'executable': '/usr/bin/codex',
+              },
+              {
+                'provider': 'claude',
+                'available': true,
+                'executable': '/usr/bin/claude',
+              },
+              {'provider': 'gemini', 'available': false, 'executable': null},
+            ],
+          }),
+          200,
+        );
+      });
+
+      final capacidades = await cliente.capacidadesAgentes();
+
+      expect(pedida!.path, '/agents/capabilities');
+      expect(autorizacion, 'Bearer secreto');
+      expect(capacidades.map((item) => item.provider), [
+        'codex',
+        'claude',
+        'gemini',
+      ]);
+      expect(capacidades[0].disponible, isTrue);
+      expect(capacidades[2].disponible, isFalse);
+    },
+  );
 }

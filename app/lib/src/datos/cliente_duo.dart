@@ -30,6 +30,28 @@ class FalloDuo implements Exception {
   String toString() => '$codigo: $mensaje';
 }
 
+/// Capacidad del dispositivo actual. Es deliberadamente distinta de la
+/// asignación Cloud: que un CLI no esté instalado aquí no impide asignar la
+/// tarea a otro miembro que sí lo tenga.
+class CapacidadAgenteLocal {
+  const CapacidadAgenteLocal({
+    required this.provider,
+    required this.disponible,
+    this.ejecutable,
+  });
+
+  final String provider;
+  final bool disponible;
+  final String? ejecutable;
+
+  factory CapacidadAgenteLocal.desdeJson(Map<String, dynamic> json) =>
+      CapacidadAgenteLocal(
+        provider: '${json['provider'] ?? ''}',
+        disponible: json['available'] == true,
+        ejecutable: json['executable'] as String?,
+      );
+}
+
 class ClienteDuo {
   ClienteDuo({ConfigDuo? config, http.Client? transporte})
     : _config = config ?? ConfigDuo.desdeEntorno,
@@ -73,15 +95,61 @@ class ClienteDuo {
     }
 
     if (cuerpo == null) {
-      throw const FalloDuo('respuesta_ilegible', 'El servicio devolvió algo que no es JSON.');
+      throw const FalloDuo(
+        'respuesta_ilegible',
+        'El servicio devolvió algo que no es JSON.',
+      );
     }
 
     try {
       return Tablero.desdeJson(cuerpo);
     } on Object catch (e) {
       // Un 200 que no encaja con el contrato es un bug nuestro, no del usuario.
-      throw FalloDuo('contrato_roto', 'La respuesta no encaja con el contrato: $e');
+      throw FalloDuo(
+        'contrato_roto',
+        'La respuesta no encaja con el contrato: $e',
+      );
     }
+  }
+
+  Future<List<CapacidadAgenteLocal>> capacidadesAgentes() async {
+    final http.Response respuesta;
+    try {
+      respuesta = await _http
+          .get(_config.ruta('/agents/capabilities'), headers: _cabeceras)
+          .timeout(_espera);
+    } on TimeoutException {
+      throw FalloDuo.sinServicio;
+    } on SocketException {
+      throw FalloDuo.sinServicio;
+    } on http.ClientException {
+      throw FalloDuo.sinServicio;
+    }
+
+    final cuerpo = _decodifica(respuesta.body);
+    if (respuesta.statusCode != 200) {
+      final error = cuerpo?['error'] as Map<String, dynamic>?;
+      throw FalloDuo(
+        error?['code'] as String? ?? 'http_${respuesta.statusCode}',
+        error?['message'] as String? ??
+            'No se pudieron leer los agentes locales.',
+      );
+    }
+
+    final agentes = cuerpo?['agents'];
+    if (agentes is! List) {
+      throw const FalloDuo(
+        'contrato_roto',
+        'La respuesta de capacidades no contiene agents.',
+      );
+    }
+    return agentes
+        .whereType<Map>()
+        .map(
+          (json) =>
+              CapacidadAgenteLocal.desdeJson(json.cast<String, dynamic>()),
+        )
+        .toList(growable: false);
   }
 
   Stream<EventoDuo> eventos() async* {
@@ -115,7 +183,10 @@ class ClienteDuo {
     } on SocketException {
       throw FalloDuo.sinServicio;
     } on WebSocketChannelException catch (e) {
-      throw FalloDuo('websocket_failed', e.message ?? 'Falló la conexión WebSocket.');
+      throw FalloDuo(
+        'websocket_failed',
+        e.message ?? 'Falló la conexión WebSocket.',
+      );
     } on FormatException catch (e) {
       throw FalloDuo('evento_invalido', e.message);
     } finally {
@@ -139,10 +210,7 @@ class ClienteDuo {
       respuesta = await _http
           .post(
             _config.ruta('/tasks'),
-            headers: {
-              ..._cabeceras,
-              'Content-Type': 'application/json',
-            },
+            headers: {..._cabeceras, 'Content-Type': 'application/json'},
             body: jsonEncode(cuerpoPeticion),
           )
           .timeout(_espera);
@@ -183,10 +251,7 @@ class ClienteDuo {
       respuesta = await _http
           .post(
             _config.ruta(ruta),
-            headers: {
-              ..._cabeceras,
-              'Content-Type': 'application/json',
-            },
+            headers: {..._cabeceras, 'Content-Type': 'application/json'},
             body: jsonEncode({'taskId': tareaId}),
           )
           .timeout(_espera);

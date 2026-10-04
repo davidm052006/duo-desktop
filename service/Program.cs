@@ -12,6 +12,8 @@ builder.Services.AddSingleton<LiveEventStream>();
 builder.Services.AddSingleton<HistoryReader>();
 builder.Services.AddSingleton<GitHubReader>();
 builder.Services.AddSingleton<DuoCommandRunner>();
+builder.Services.AddSingleton<IExecutableLocator, PathExecutableLocator>();
+builder.Services.AddSingleton<AgentCapabilitiesReader>();
 
 var app = builder.Build();
 app.UseWebSockets();
@@ -27,6 +29,16 @@ if (string.IsNullOrWhiteSpace(token))
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "duo-desktop" }));
+
+app.MapGet("/agents/capabilities", (HttpContext ctx, AgentCapabilitiesReader reader) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    // No se inspeccionan credenciales, variables de proveedor ni archivos de
+    // configuración. La ruta resuelta es metadato local permitido por contrato.
+    return Results.Ok(new { agents = reader.Read() });
+});
 
 app.MapGet("/board", (HttpContext ctx, BoardReader reader, ILogger<Program> log) =>
 {
