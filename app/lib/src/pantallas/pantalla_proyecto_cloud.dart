@@ -5,6 +5,7 @@ import '../datos/cliente_duo.dart';
 import '../datos/cliente_cloud.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
+import 'panel_trabajo_local.dart';
 
 class PantallaProyectoCloud extends StatefulWidget {
   const PantallaProyectoCloud({
