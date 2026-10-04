@@ -21,9 +21,11 @@ abstract final class TemaDuo {
 
   static ThemeData _construye(Brightness brillo, PaletaDatos paleta) {
     final esquema = ColorScheme.fromSeed(
-      seedColor: paleta.series.first,
+      seedColor: const Color(0xFF9D5CFF),
       brightness: brillo,
       surface: paleta.superficie,
+      primary: paleta.acento,
+      secondary: paleta.acentoAlt,
     );
 
     return ThemeData(
@@ -39,6 +41,38 @@ abstract final class TemaDuo {
         foregroundColor: paleta.tintaPrincipal,
         elevation: 0,
         scrolledUnderElevation: 0,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: paleta.superficie.withValues(alpha: .42),
+        labelStyle: TextStyle(color: paleta.tintaSecundaria),
+        hintStyle: TextStyle(color: paleta.tintaTenue),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: paleta.rejilla),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: paleta.acentoAlt, width: 1.4),
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: paleta.acento,
+          foregroundColor: const Color(0xFF100716),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: paleta.acentoAlt,
+          side: BorderSide(color: paleta.acentoAlt.withValues(alpha: .45)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       ),
     );
   }
