@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../pantallas/marco_app.dart';
 import '../tema/paleta.dart';
-import 'config_supabase.dart';
 
 class PuertaAuth extends StatefulWidget {
   const PuertaAuth({super.key});

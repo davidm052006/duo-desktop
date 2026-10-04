@@ -133,7 +133,10 @@ class _Contenido extends StatelessWidget {
 
   static const _anchoPanelLateral = 320.0;
   static const _separacion = 18.0;
-  static const _umbralDosColumnas = 1180.0;
+  // A partir de 760 px el Kanban ya puede desplazarse horizontalmente y el
+  // resumen conserva su sitio visible. En su ancho de 320 px, CargaAgentes
+  // usa su composición compacta.
+  static const _umbralDosColumnas = 760.0;
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +151,7 @@ class _Contenido extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _AvisoFaseUno(),
+                _AvisoFaseUno(),
                 const SizedBox(height: 14),
                 Expanded(
                   child: Row(
@@ -173,7 +176,7 @@ class _Contenido extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
-            const _AvisoFaseUno(),
+            _AvisoFaseUno(),
             const SizedBox(height: 14),
             SizedBox(
               height: 560,

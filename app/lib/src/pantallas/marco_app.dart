@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../estado/estado_tablero.dart';
 import '../tema/paleta.dart';
+import '../widgets/fondo_cyber_animado.dart';
 import '../widgets/tarjeta.dart';
 import 'fondo_video_config.dart';
 import 'fondo_video_reproductor.dart';
@@ -17,6 +18,7 @@ import 'pantalla_github.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_inicio.dart';
 import 'pantalla_personalizacion.dart';
+import 'pantalla_proyectos.dart';
 import 'pantalla_preguntas.dart';
 import 'pantalla_tablero.dart';
 import 'pantalla_tareas.dart';
@@ -35,6 +37,7 @@ class Destino {
 
 const destinosTrabajo = [
   Destino('Inicio', Icons.home_outlined),
+  Destino('Proyectos', Icons.account_tree_outlined),
   Destino('Tablero', Icons.view_week_outlined),
   Destino('Tareas', Icons.check_circle_outline),
   Destino('Agentes', Icons.hub_outlined),
@@ -207,6 +210,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
               ruta: _videoSeleccionado!,
               alFallar: _videoFallo,
             ),
+          const FondoCyberAnimado(),
           Column(
             children: [
               _BarraMarca(
@@ -226,6 +230,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                     VerticalDivider(width: 1, color: paleta.rejilla),
                     Expanded(
                       child: switch (destinos[_activo].nombre) {
+                        'Proyectos' => const PantallaProyectos(),
                         'Tablero' => const PantallaTablero(),
                         'Tareas' => const PantallaTareas(),
                         'Agentes' => const PantallaAgentes(),
