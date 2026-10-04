@@ -53,69 +53,99 @@ class _BarraAgente extends StatelessWidget {
     // Con todo a cero no hay escala posible; se dibuja la pista vacía.
     final fraccion = maximo <= 0 ? 0.0 : agente.puntos / maximo;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        SizedBox(
-          width: _anchoEtiqueta,
-          child: Text(
-            agente.agente,
-            style: textos.bodyMedium?.copyWith(
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              height: _alturaBarra,
-              color: paleta.rejilla,
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: fraccion.clamp(0.0, 1.0),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color,
-                    // El extremo que nace de la línea base queda recto; solo se
-                    // redondea la punta, que es el dato.
-                    borderRadius: const BorderRadius.horizontal(
-                      right: Radius.circular(4),
-                    ),
+    return LayoutBuilder(
+      builder: (context, caja) {
+        final compacta = caja.maxWidth < 520;
+
+        final barra = ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            height: _alturaBarra,
+            color: paleta.rejilla,
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: fraccion.clamp(0.0, 1.0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(4),
                   ),
-                  child: const SizedBox.expand(),
                 ),
+                child: const SizedBox.expand(),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        // Etiqueta directa: la cifra se lee sin pasar el ratón y sin leyenda.
-        // Las cifras van en tinta de texto, no del color de la serie.
-        // Las cifras se quedan en una línea: si la columna se queda corta, mejor
-        // recortar que partir la fila en dos y descuadrar las barras.
-        SizedBox(
-          width: 132,
-          child: Text(
-            '${agente.puntos} pts · ${agente.tareas} '
-            '${agente.tareas == 1 ? "tarea" : "tareas"}',
-            style: textos.bodySmall,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        SizedBox(
-          width: 96,
-          child: Text(
-            agente.ultima == null ? 'sin actividad' : _fecha(agente.ultima!),
-            style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
-            textAlign: TextAlign.right,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
+        );
+
+        final cifra = Text(
+          '${agente.puntos} pts · ${agente.tareas} '
+          '${agente.tareas == 1 ? "tarea" : "tareas"}',
+          style: textos.bodySmall,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+
+        final ultima = Text(
+          agente.ultima == null ? 'sin actividad' : _fecha(agente.ultima!),
+          style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
+          textAlign: compacta ? TextAlign.left : TextAlign.right,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+
+        if (compacta) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  SizedBox(
+                    width: _anchoEtiqueta,
+                    child: Text(
+                      agente.agente,
+                      style: textos.bodyMedium?.copyWith(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: barra),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(child: cifra),
+                  const SizedBox(width: 10),
+                  Flexible(child: ultima),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: _anchoEtiqueta,
+              child: Text(
+                agente.agente,
+                style: textos.bodyMedium?.copyWith(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Expanded(child: barra),
+            const SizedBox(width: 12),
+            Flexible(flex: 2, child: cifra),
+            const SizedBox(width: 10),
+            Flexible(child: ultima),
+          ],
+        );
+      },
     );
   }
 
