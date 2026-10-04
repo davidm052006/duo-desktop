@@ -69,7 +69,8 @@ if test -d $raiz/app
         --dart-define=SERVICE_PORT=$port \
         --dart-define=TOKEN=$token \
         --dart-define=SUPABASE_URL=$SUPABASE_URL \
-        --dart-define=SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
+        --dart-define=SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY \
+        --dart-define=DUO_CLOUD_URL="$DUO_CLOUD_URL"
 else
     set_color yellow; echo "app/ no existe todavía; solo el servicio está arriba."; set_color normal
     echo "Pruébalo:  curl -H \"Authorization: Bearer $token\" http://127.0.0.1:$port/board"
