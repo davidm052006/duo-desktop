@@ -1,0 +1,228 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.35.2'
+
+jobs:
+  linux:
+    name: Build Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libx11-dev libxi-dev libxext-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+            libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+            libasound2t64 libpangocairo-1.0-0 \
+            curl unzip xz-utils git
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Resolve dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze --no-fatal-infos
+
+      - name: Extract version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION}"
+
+      - name: Build Linux release
+        working-directory: app
+        run: flutter build linux --release -v
+
+      - name: Package Linux artifact
+        id: package
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          BUNDLE="app/build/linux/x64/release/bundle"
+          OUT_DIR="artifacts"
+          mkdir -p "${OUT_DIR}"
+
+          if [[ -x "app/scripts/build-deb.sh" ]]; then
+            echo "Using app/scripts/build-deb.sh"
+            bash app/scripts/build-deb.sh
+            DEB=$(find . -name "duo-desktop_*_amd64.deb" -type f | head -n1)
+            if [[ -z "${DEB}" ]]; then
+              echo "build-deb.sh did not produce a .deb" >&2
+              exit 1
+            fi
+            cp "${DEB}" "${OUT_DIR}/"
+            ARTIFACT_NAME=$(basename "${DEB}")
+          else
+            echo "app/scripts/build-deb.sh not found; packaging Flutter bundle as zip"
+            ARTIFACT_NAME="DuoDesktop-${VERSION}-linux-x64.zip"
+            (cd "${BUNDLE}" && zip -r "${GITHUB_WORKSPACE}/${OUT_DIR}/${ARTIFACT_NAME}" .)
+          fi
+
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          ls -lh "${OUT_DIR}/"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifact
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Build Windows
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Resolve dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze --no-fatal-infos
+
+      - name: Extract version from tag
+        id: ver
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION}"
+
+      - name: Build Windows release
+        working-directory: app
+        run: flutter build windows --release -v
+
+      - name: Package Windows artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          # Flutter Windows release output
+          BUNDLE="app/build/windows/x64/runner/Release"
+          OUT_DIR="artifacts"
+          mkdir -p "${OUT_DIR}"
+
+          if [[ ! -d "${BUNDLE}" ]]; then
+            echo "Windows Release bundle not found at ${BUNDLE}" >&2
+            find app/build -type d -name 'Release' 2>/dev/null || true
+            exit 1
+          fi
+
+          # Prefer MSIX if a packaging script exists in the future
+          if [[ -x "app/scripts/build-msix.sh" ]] || [[ -f "app/scripts/build-msix.ps1" ]]; then
+            echo "MSIX packaging script detected — extend workflow when ready"
+          fi
+
+          ARTIFACT_NAME="DuoDesktop-${VERSION}-windows-x64.zip"
+          # Use PowerShell Compress-Archive for reliable Windows zips
+          powershell -NoProfile -Command "Compress-Archive -Path '${BUNDLE}\\*' -DestinationPath '${OUT_DIR}\\${ARTIFACT_NAME}' -Force"
+
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          ls -lh "${OUT_DIR}/"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifact
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    if: success()
+
+    steps:
+      - name: Checkout (for release notes context)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifact
+          path: release-assets
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifact
+          path: release-assets
+
+      - name: Generate checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum * > checksums.txt
+          cat checksums.txt
+          ls -lh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Duo Desktop ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
