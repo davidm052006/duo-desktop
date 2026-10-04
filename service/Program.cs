@@ -201,6 +201,21 @@ app.MapPost("/questions/{id}/answer", async (HttpContext ctx, string id, AnswerQ
 });
 
 
+app.MapGet("/git/repository/{projectId}", async (
+    HttpContext ctx,
+    string projectId,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    var mapping = await workspaces.RepositoryAsync(projectId, ct);
+    return mapping is null
+        ? Error(404, "repository_not_configured", "No hay repositorio local configurado para este proyecto.")
+        : Results.Ok(mapping);
+});
+
 app.MapPost("/git/repository", async (
     HttpContext ctx,
     ConfigureRepositoryRequest? request,
