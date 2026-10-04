@@ -26,7 +26,7 @@ if test -f $env_file
         end
 
         set value (string replace -r '^"(.*)"$' '$1' -- "$value")
-        set value (string replace -r "^'(.*)'$" '$1' -- "$value")
+        set value (string replace -r "^'(.*)'\$" '$1' -- "$value")
         set -gx $key "$value"
     end < $env_file
 end
