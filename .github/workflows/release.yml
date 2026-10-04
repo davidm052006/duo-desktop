@@ -123,7 +123,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -159,10 +158,7 @@ jobs:
         working-directory: app
         shell: pwsh
         run: |
-          flutter build windows --release -v `
-            --dart-define=SUPABASE_URL=https://qagjowkmgsbxygydjxgo.supabase.co `
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_YFBqMrSs3OsBCSS7IAsVHA_Q3PEtfQk `
-            --dart-define=DUO_CLOUD_URL=${{ vars.DUO_CLOUD_URL }}
+          flutter build windows --release -v
 
       - name: Publish local service self-contained
         shell: pwsh
