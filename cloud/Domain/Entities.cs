@@ -13,6 +13,31 @@ public static class ProjectRoles
         value is Owner or Editor;
 }
 
+public static class TaskStatuses
+{
+    public const string Pending = "pending";
+    public const string InProgress = "in_progress";
+    public const string Waiting = "waiting";
+    public const string InReview = "in_review";
+    public const string Finalized = "finalized";
+    public const string Cancelled = "cancelled";
+
+    public static bool IsValid(string value) =>
+        value is Pending or InProgress or Waiting or InReview or Finalized or Cancelled;
+}
+
+public static class WorkProviders
+{
+    public const string ChatGpt = "chatgpt";
+    public const string Grok = "grok";
+    public const string Codex = "codex";
+    public const string Claude = "claude";
+    public const string Gemini = "gemini";
+
+    public static bool IsValid(string value) =>
+        value is ChatGpt or Grok or Codex or Claude or Gemini;
+}
+
 public sealed class UserProfile
 {
     public Guid Id { get; set; }
@@ -32,6 +57,8 @@ public sealed class Project
     public required string Slug { get; set; }
     public Guid OwnerUserId { get; set; }
     public UserProfile? Owner { get; set; }
+    public required string RepositoryFullName { get; set; }
+    public string TargetBranch { get; set; } = "develop";
     public DateTimeOffset CreatedAt { get; set; }
 
     public List<ProjectMember> Members { get; set; } = [];
@@ -73,12 +100,34 @@ public sealed class CloudTask
     public required string OwnerAgent { get; set; }
     public required string Status { get; set; }
     public required string Branch { get; set; }
+    public Guid? AssignedUserId { get; set; }
+    public UserProfile? AssignedUser { get; set; }
+    public required string WorkProvider { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public UserProfile? CreatedByUser { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
     public List<TaskEvent> Events { get; set; } = [];
+    public PullRequest? PullRequest { get; set; }
+}
+
+public sealed class PullRequest
+{
+    public Guid Id { get; set; }
+    public Guid ProjectId { get; set; }
+    public Project? Project { get; set; }
+    public Guid TaskId { get; set; }
+    public CloudTask? Task { get; set; }
+    public int GitHubNumber { get; set; }
+    public required string Url { get; set; }
+    public required string SourceBranch { get; set; }
+    public required string TargetBranch { get; set; }
+    public required string State { get; set; }
+    public string? ReviewState { get; set; }
+    public DateTimeOffset? MergedAt { get; set; }
+    public string? MergedByLogin { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class TaskEvent
