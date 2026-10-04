@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: duo_cloud
+      POSTGRES_USER: duo
+      POSTGRES_PASSWORD: duo-dev-only
+    ports:
+      - "54329:5432"
+    volumes:
+      - duo_cloud_pg:/var/lib/postgresql/data
+
+volumes:
+  duo_cloud_pg:
