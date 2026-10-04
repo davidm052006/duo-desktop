@@ -52,6 +52,89 @@ class CapacidadAgenteLocal {
       );
 }
 
+
+class WorkspaceLocal {
+  const WorkspaceLocal({
+    required this.id,
+    required this.worktree,
+    required this.rama,
+    required this.target,
+    required this.provider,
+  });
+
+  final String id;
+  final String worktree;
+  final String rama;
+  final String target;
+  final String provider;
+
+  factory WorkspaceLocal.desdeJson(Map<String, dynamic> json) => WorkspaceLocal(
+        id: '${json['workspaceId'] ?? ''}',
+        worktree: '${json['worktreePath'] ?? ''}',
+        rama: '${json['branch'] ?? ''}',
+        target: '${json['targetBranch'] ?? ''}',
+        provider: '${json['provider'] ?? ''}',
+      );
+}
+
+class EstadoWorkspaceLocal {
+  const EstadoWorkspaceLocal({
+    required this.id,
+    required this.rama,
+    required this.dirty,
+    required this.archivos,
+    required this.ahead,
+    required this.behind,
+  });
+
+  final String id;
+  final String rama;
+  final bool dirty;
+  final List<String> archivos;
+  final int ahead;
+  final int behind;
+
+  factory EstadoWorkspaceLocal.desdeJson(Map<String, dynamic> json) =>
+      EstadoWorkspaceLocal(
+        id: '${json['workspaceId'] ?? ''}',
+        rama: '${json['branch'] ?? ''}',
+        dirty: json['dirty'] == true,
+        archivos: (json['changedFiles'] as List? ?? const [])
+            .map((e) => '$e')
+            .toList(growable: false),
+        ahead: json['ahead'] as int? ?? 0,
+        behind: json['behind'] as int? ?? 0,
+      );
+}
+
+class PullRequestLocal {
+  const PullRequestLocal({
+    required this.numero,
+    required this.url,
+    required this.estado,
+    required this.origen,
+    required this.destino,
+    required this.mergedAt,
+  });
+
+  final int numero;
+  final String url;
+  final String estado;
+  final String origen;
+  final String destino;
+  final DateTime? mergedAt;
+
+  factory PullRequestLocal.desdeJson(Map<String, dynamic> json) =>
+      PullRequestLocal(
+        numero: json['number'] as int? ?? 0,
+        url: '${json['url'] ?? ''}',
+        estado: '${json['state'] ?? ''}',
+        origen: '${json['headRefName'] ?? ''}',
+        destino: '${json['baseRefName'] ?? ''}',
+        mergedAt: DateTime.tryParse('${json['mergedAt'] ?? ''}'),
+      );
+}
+
 class ClienteDuo {
   ClienteDuo({ConfigDuo? config, http.Client? transporte})
     : _config = config ?? ConfigDuo.desdeEntorno,
@@ -276,6 +359,154 @@ class ClienteDuo {
               ? respuesta.body.trim()
               : 'El servicio respondió ${respuesta.statusCode}.'),
     );
+  }
+
+
+  Future<void> configurarRepositorioLocal({
+    required String projectId,
+    required String projectSlug,
+    required String repositoryFullName,
+    required String repositoryPath,
+  }) async {
+    await _jsonRequest(
+      'POST',
+      '/git/repository',
+      body: {
+        'projectId': projectId,
+        'projectSlug': projectSlug,
+        'repositoryFullName': repositoryFullName,
+        'repositoryPath': repositoryPath,
+      },
+    );
+  }
+
+  Future<WorkspaceLocal> prepararWorkspace({
+    required String projectId,
+    required String externalId,
+    required String taskTitle,
+    required String targetBranch,
+    required String provider,
+  }) async {
+    final json = await _jsonRequest(
+      'POST',
+      '/git/workspaces/prepare',
+      body: {
+        'projectId': projectId,
+        'externalId': externalId,
+        'taskTitle': taskTitle,
+        'targetBranch': targetBranch,
+        'provider': provider,
+      },
+    );
+    return WorkspaceLocal.desdeJson(json);
+  }
+
+  Future<EstadoWorkspaceLocal> estadoWorkspace(String workspaceId) async {
+    final json = await _jsonRequest(
+      'GET',
+      '/git/workspaces/${Uri.encodeComponent(workspaceId)}/status',
+    );
+    return EstadoWorkspaceLocal.desdeJson(json);
+  }
+
+  Future<String> commitWorkspace({
+    required String workspaceId,
+    required List<String> archivos,
+    required String mensaje,
+  }) async {
+    final json = await _jsonRequest(
+      'POST',
+      '/git/workspaces/commit',
+      body: {
+        'workspaceId': workspaceId,
+        'files': archivos,
+        'message': mensaje,
+      },
+    );
+    return '${json['sha'] ?? ''}';
+  }
+
+  Future<void> pushWorkspace(String workspaceId) async {
+    await _jsonRequest(
+      'POST',
+      '/git/workspaces/push',
+      body: {'workspaceId': workspaceId},
+    );
+  }
+
+  Future<void> lanzarAgenteLocal({
+    required String workspaceId,
+    required String provider,
+  }) async {
+    await _jsonRequest(
+      'POST',
+      '/git/workspaces/agent',
+      body: {'workspaceId': workspaceId, 'provider': provider},
+    );
+  }
+
+  Future<PullRequestLocal> crearOEncontrarPullRequest({
+    required String workspaceId,
+    required String titulo,
+    required String cuerpo,
+  }) async {
+    final json = await _jsonRequest(
+      'POST',
+      '/git/workspaces/pr',
+      body: {'workspaceId': workspaceId, 'title': titulo, 'body': cuerpo},
+    );
+    return PullRequestLocal.desdeJson(json);
+  }
+
+  Future<PullRequestLocal> estadoPullRequest({
+    required String workspaceId,
+    required int numero,
+  }) async {
+    final json = await _jsonRequest(
+      'GET',
+      '/git/workspaces/${Uri.encodeComponent(workspaceId)}/pr/$numero',
+    );
+    return PullRequestLocal.desdeJson(json);
+  }
+
+  Future<Map<String, dynamic>> _jsonRequest(
+    String metodo,
+    String ruta, {
+    Map<String, dynamic>? body,
+  }) async {
+    final headers = {
+      ..._cabeceras,
+      if (body != null) 'Content-Type': 'application/json',
+    };
+
+    final http.Response respuesta;
+    try {
+      final uri = _config.ruta(ruta);
+      respuesta = switch (metodo) {
+        'GET' => await _http.get(uri, headers: headers).timeout(_espera),
+        'POST' => await _http
+            .post(uri, headers: headers, body: body == null ? null : jsonEncode(body))
+            .timeout(_espera),
+        _ => throw ArgumentError.value(metodo, 'metodo'),
+      };
+    } on TimeoutException {
+      throw FalloDuo.sinServicio;
+    } on SocketException {
+      throw FalloDuo.sinServicio;
+    } on http.ClientException {
+      throw FalloDuo.sinServicio;
+    }
+
+    final decoded = _decodifica(respuesta.body);
+    if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
+      final error = decoded?['error'] as Map<String, dynamic>?;
+      throw FalloDuo(
+        error?['code'] as String? ?? 'http_${respuesta.statusCode}',
+        error?['message'] as String? ??
+            'El servicio respondió ${respuesta.statusCode}.',
+      );
+    }
+    return decoded ?? <String, dynamic>{};
   }
 
   Map<String, dynamic>? _decodifica(String cuerpo) {
