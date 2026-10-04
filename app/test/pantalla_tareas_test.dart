@@ -220,12 +220,12 @@ void main() {
     );
 
     await tester.tap(find.text('Tareas'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Centro de control'), findsNothing);
     expect(find.text('4 total'), findsOneWidget);
 
     await tester.tap(find.text('Agentes').first);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Claude Code'), findsOneWidget);
     expect(find.text('alias: codex'), findsOneWidget);
   });

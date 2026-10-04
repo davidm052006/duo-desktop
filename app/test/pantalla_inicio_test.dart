@@ -121,7 +121,7 @@ void main() {
     expect(find.text('Nueva tarea · Fase 2'), findsNothing);
 
     await tester.tap(find.textContaining('Nueva tarea').first);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(Dialog), findsOneWidget);
   });
 
@@ -139,7 +139,7 @@ void main() {
     await _pinta(tester, await _estadoCon(_json));
 
     await tester.tap(find.text('Tablero'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Centro de control'), findsNothing);
     expect(find.text('contrato de la API'), findsWidgets);
