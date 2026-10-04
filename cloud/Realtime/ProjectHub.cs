@@ -13,7 +13,12 @@ public sealed class ProjectHub(
 {
     public async Task SubscribeProject(Guid projectId)
     {
-        var user = await currentUser.GetOrCreateAsync(db, Context.ConnectionAborted);
+        var principal = Context.User
+            ?? throw new HubException("Conexión sin identidad autenticada.");
+        var user = await currentUser.GetOrCreateAsync(
+            principal,
+            db,
+            Context.ConnectionAborted);
         var allowed = await db.ProjectMembers.AnyAsync(
             x => x.ProjectId == projectId && x.UserId == user.Id,
             Context.ConnectionAborted);
