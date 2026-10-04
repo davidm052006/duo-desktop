@@ -7,12 +7,21 @@ namespace DuoDesktop.Cloud.Auth;
 
 public sealed class CurrentUser(IHttpContextAccessor accessor)
 {
-    public async Task<UserProfile> GetOrCreateAsync(
+    public Task<UserProfile> GetOrCreateAsync(
         DuoCloudDbContext db,
         CancellationToken cancellationToken = default)
     {
         var principal = accessor.HttpContext?.User
             ?? throw new InvalidOperationException("No hay HttpContext autenticado.");
+
+        return GetOrCreateAsync(principal, db, cancellationToken);
+    }
+
+    public async Task<UserProfile> GetOrCreateAsync(
+        ClaimsPrincipal principal,
+        DuoCloudDbContext db,
+        CancellationToken cancellationToken = default)
+    {
 
         var subject = principal.FindFirstValue("sub")
             ?? principal.FindFirstValue(ClaimTypes.NameIdentifier)
