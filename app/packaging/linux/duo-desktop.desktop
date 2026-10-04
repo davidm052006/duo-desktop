@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Duo Desktop
+Comment=Coordinate AI agents over the same repository
+Exec=/usr/bin/duo-desktop
+Icon=duo-desktop
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true

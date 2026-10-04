@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Duo Desktop">
+  <rect width="256" height="256" rx="56" fill="#15151c"/>
+  <path d="M64 68h54c45 0 74 24 74 60s-29 60-74 60H64V68zm48 84c22 0 36-8 36-24s-14-24-36-24H108v48h4z" fill="#f15bb5"/>
+  <circle cx="188" cy="68" r="18" fill="#00e5ff"/>
+</svg>
