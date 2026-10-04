@@ -106,13 +106,18 @@ jobs:
           retention-days: 14
 
   windows:
-    name: Build Windows
+    name: Build Windows portable
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -123,6 +128,14 @@ jobs:
 
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows runner when absent
+        shell: pwsh
+        working-directory: app
+        run: |
+          if (-not (Test-Path "windows")) {
+            flutter create --platforms=windows .
+          }
 
       - name: Resolve dependencies
         working-directory: app
@@ -143,42 +156,63 @@ jobs:
 
       - name: Build Windows release
         working-directory: app
-        run: flutter build windows --release -v
-
-      - name: Package Windows artifact
-        id: package
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          VERSION="${{ steps.ver.outputs.version }}"
-          # Flutter Windows release output
-          BUNDLE="app/build/windows/x64/runner/Release"
-          OUT_DIR="artifacts"
-          mkdir -p "${OUT_DIR}"
+          flutter build windows --release -v `
+            --dart-define=SUPABASE_URL=https://qagjowkmgsbxygydjxgo.supabase.co `
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_YFBqMrSs3OsBCSS7IAsVHA_Q3PEtfQk `
+            --dart-define=DUO_CLOUD_URL=${{ vars.DUO_CLOUD_URL }}
 
-          if [[ ! -d "${BUNDLE}" ]]; then
-            echo "Windows Release bundle not found at ${BUNDLE}" >&2
-            find app/build -type d -name 'Release' 2>/dev/null || true
-            exit 1
-          fi
+      - name: Publish local service self-contained
+        shell: pwsh
+        run: |
+          dotnet publish .\service\DuoDesktop.Service.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -o .\artifacts\service
 
-          # Prefer MSIX if a packaging script exists in the future
-          if [[ -x "app/scripts/build-msix.sh" ]] || [[ -f "app/scripts/build-msix.ps1" ]]; then
-            echo "MSIX packaging script detected — extend workflow when ready"
-          fi
+      - name: Package Windows portable artifact
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.ver.outputs.version }}"
+          $bundle = "app\build\windows\x64\runner\Release"
+          $stage = "artifacts\DuoDesktop-${version}-windows-x64"
+          $zip = "artifacts\DuoDesktop-${version}-windows-x64.zip"
 
-          ARTIFACT_NAME="DuoDesktop-${VERSION}-windows-x64.zip"
-          # Use PowerShell Compress-Archive for reliable Windows zips
-          powershell -NoProfile -Command "Compress-Archive -Path '${BUNDLE}\\*' -DestinationPath '${OUT_DIR}\\${ARTIFACT_NAME}' -Force"
+          if (-not (Test-Path $bundle)) {
+            throw "Windows Release bundle not found at $bundle"
+          }
 
-          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
-          ls -lh "${OUT_DIR}/"
+          New-Item -ItemType Directory -Force -Path "$stage\app" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stage\service" | Out-Null
+
+          Copy-Item "$bundle\*" "$stage\app" -Recurse -Force
+          Copy-Item "artifacts\service\*" "$stage\service" -Recurse -Force
+          Copy-Item "scripts\windows\start-duo.ps1" "$stage\start-duo.ps1" -Force
+          Copy-Item "scripts\windows\Iniciar Duo Desktop.cmd" "$stage\Iniciar Duo Desktop.cmd" -Force
+          Copy-Item "scripts\windows\README-PRUEBA.txt" "$stage\README-PRUEBA.txt" -Force
+          Set-Content -Path "$stage\VERSION.txt" -Value $version -Encoding UTF8
+
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
+
+          $size = (Get-Item $zip).Length
+          if ($size -lt 1000000) {
+            throw "Windows zip is unexpectedly small: $size bytes"
+          }
+
+          "artifact_name=DuoDesktop-${version}-windows-x64.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Get-ChildItem artifacts
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifact
-          path: artifacts/*
+          path: artifacts/DuoDesktop-*-windows-x64.zip
           if-no-files-found: error
           retention-days: 14
 
