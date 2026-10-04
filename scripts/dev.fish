@@ -54,7 +54,11 @@ if test -d $raiz/app
     set_color cyan; echo "── app Flutter"; set_color normal
     cd $raiz/app
     DUO_SERVICE_URL="http://127.0.0.1:$port" DUO_TOKEN=$token \
-        flutter run -d linux --dart-define=SERVICE_PORT=$port --dart-define=TOKEN=$token
+        flutter run -d linux \
+        --dart-define=SERVICE_PORT=$port \
+        --dart-define=TOKEN=$token \
+        --dart-define=SUPABASE_URL=https://qagjowkmgsbxygydjxgo.supabase.co \
+        --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_YFBqMrSs3OsBCSS7IAsVHA_Q3PEtfQk
 else
     set_color yellow; echo "app/ no existe todavía; solo el servicio está arriba."; set_color normal
     echo "Pruébalo:  curl -H \"Authorization: Bearer $token\" http://127.0.0.1:$port/board"

@@ -53,6 +53,7 @@ dependencies:
   webview_cef:
     path: packages/webview_cef_duo
   url_launcher: ^6.3.1
+  supabase_flutter: ^2.12.0
 
 dev_dependencies:
   flutter_test:
