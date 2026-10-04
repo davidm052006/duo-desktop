@@ -16,6 +16,7 @@ class PantallaProyectos extends StatefulWidget {
 class _PantallaProyectosState extends State<PantallaProyectos> {
   late final ClienteCloud _cloud;
   late Future<List<ProyectoCloud>> _carga;
+  ProyectoCloud? _abierto;
 
   @override
   void initState() {
@@ -50,6 +51,13 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
 
   @override
   Widget build(BuildContext context) {
+    if (_abierto != null) {
+      return PantallaProyectoCloud(
+        proyecto: _abierto!,
+        volver: () => setState(() => _abierto = null),
+      );
+    }
+
     final paleta = context.paleta;
     final textos = Theme.of(context).textTheme;
 
@@ -160,7 +168,10 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
                       for (final proyecto in proyectos)
                         SizedBox(
                           width: ancho,
-                          child: _TarjetaProyecto(proyecto: proyecto),
+                          child: _TarjetaProyecto(
+                            proyecto: proyecto,
+                            abrir: () => setState(() => _abierto = proyecto),
+                          ),
                         ),
                     ],
                   );
@@ -174,9 +185,13 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
 }
 
 class _TarjetaProyecto extends StatelessWidget {
-  const _TarjetaProyecto({required this.proyecto});
+  const _TarjetaProyecto({
+    required this.proyecto,
+    required this.abrir,
+  });
 
   final ProyectoCloud proyecto;
+  final VoidCallback abrir;
 
   @override
   Widget build(BuildContext context) {
@@ -206,13 +221,7 @@ class _TarjetaProyecto extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => PantallaProyectoCloud(proyecto: proyecto),
-            ),
-          );
-        },
+        onTap: abrir,
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Column(
