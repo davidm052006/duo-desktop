@@ -10,10 +10,12 @@ class PantallaProyectoCloud extends StatefulWidget {
     super.key,
     required this.proyecto,
     required this.volver,
+    this.cloud,
   });
 
   final ProyectoCloud proyecto;
   final VoidCallback volver;
+  final ClienteCloud? cloud;
 
   @override
   State<PantallaProyectoCloud> createState() => _PantallaProyectoCloudState();
@@ -22,6 +24,7 @@ class PantallaProyectoCloud extends StatefulWidget {
 class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
     with SingleTickerProviderStateMixin {
   late final ClienteCloud _cloud;
+  late final bool _administraCloud;
   late final TabController _tabs;
   late Future<List<MiembroCloud>> _miembros;
   late Future<List<TareaCloud>> _tareas;
@@ -29,7 +32,8 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
   @override
   void initState() {
     super.initState();
-    _cloud = ClienteCloud();
+    _administraCloud = widget.cloud == null;
+    _cloud = widget.cloud ?? ClienteCloud();
     _tabs = TabController(length: 3, vsync: this);
     _recargar();
   }
@@ -37,7 +41,9 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
   @override
   void dispose() {
     _tabs.dispose();
-    _cloud.cierra();
+    if (_administraCloud) {
+      _cloud.cierra();
+    }
     super.dispose();
   }
 
@@ -76,6 +82,21 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
       ),
     );
     if (creada == true && mounted) setState(_recargar);
+  }
+
+  Future<void> _editarPullRequest(TareaCloud tarea) async {
+    final actualizado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DialogPullRequest(
+        cloud: _cloud,
+        projectId: widget.proyecto.id,
+        tarea: tarea,
+        ramaObjetivoProyecto: widget.proyecto.ramaObjetivo,
+        esOwner: widget.proyecto.rol == 'owner',
+      ),
+    );
+    if (actualizado == true && mounted) setState(_recargar);
   }
 
   @override
@@ -190,9 +211,13 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
                   crear: miembrosSnap.hasData
                       ? () => _crearTarea(miembrosSnap.data!)
                       : null,
+                  editarPullRequest: puedeEditar ? _editarPullRequest : null,
                 ),
               ),
-              _VistaRevisiones(carga: _tareas),
+              _VistaRevisiones(
+                carga: _tareas,
+                editarPullRequest: puedeEditar ? _editarPullRequest : null,
+              ),
             ],
           ),
         ),
@@ -267,11 +292,13 @@ class _VistaTareas extends StatelessWidget {
     required this.carga,
     required this.puedeEditar,
     required this.crear,
+    required this.editarPullRequest,
   });
 
   final Future<List<TareaCloud>> carga;
   final bool puedeEditar;
   final VoidCallback? crear;
+  final ValueChanged<TareaCloud>? editarPullRequest;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<TareaCloud>>(
@@ -311,7 +338,12 @@ class _VistaTareas extends StatelessWidget {
                 for (final tarea in tareas)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _TarjetaTarea(tarea: tarea),
+                    child: _TarjetaTarea(
+                      tarea: tarea,
+                      editarPullRequest: editarPullRequest == null
+                          ? null
+                          : () => editarPullRequest!(tarea),
+                    ),
                   ),
             ],
           );
@@ -320,9 +352,13 @@ class _VistaTareas extends StatelessWidget {
 }
 
 class _VistaRevisiones extends StatelessWidget {
-  const _VistaRevisiones({required this.carga});
+  const _VistaRevisiones({
+    required this.carga,
+    required this.editarPullRequest,
+  });
 
   final Future<List<TareaCloud>> carga;
+  final ValueChanged<TareaCloud>? editarPullRequest;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<TareaCloud>>(
@@ -353,7 +389,12 @@ class _VistaRevisiones extends StatelessWidget {
                 for (final tarea in revisiones)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _TarjetaRevision(tarea: tarea),
+                    child: _TarjetaRevision(
+                      tarea: tarea,
+                      editarPullRequest: editarPullRequest == null
+                          ? null
+                          : () => editarPullRequest!(tarea),
+                    ),
                   ),
             ],
           );
@@ -362,8 +403,9 @@ class _VistaRevisiones extends StatelessWidget {
 }
 
 class _TarjetaTarea extends StatelessWidget {
-  const _TarjetaTarea({required this.tarea});
+  const _TarjetaTarea({required this.tarea, this.editarPullRequest});
   final TareaCloud tarea;
+  final VoidCallback? editarPullRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -396,6 +438,12 @@ class _TarjetaTarea extends StatelessWidget {
               tono: paleta.acento,
               mono: true,
             ),
+          if (editarPullRequest != null)
+            ActionChip(
+              avatar: const Icon(Icons.merge_type, size: 16),
+              label: Text(tarea.pullRequest == null ? 'Registrar PR' : 'Actualizar PR'),
+              onPressed: editarPullRequest,
+            ),
         ],
       ),
     );
@@ -403,8 +451,9 @@ class _TarjetaTarea extends StatelessWidget {
 }
 
 class _TarjetaRevision extends StatelessWidget {
-  const _TarjetaRevision({required this.tarea});
+  const _TarjetaRevision({required this.tarea, this.editarPullRequest});
   final TareaCloud tarea;
+  final VoidCallback? editarPullRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -428,6 +477,14 @@ class _TarjetaRevision extends StatelessWidget {
           if (pr.estadoRevision != null) ...[
             const SizedBox(height: 8),
             Insignia(pr.estadoRevision!, tono: context.paleta.acentoAlt),
+          ],
+          if (editarPullRequest != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: editarPullRequest,
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Actualizar PR'),
+            ),
           ],
         ],
       ),
@@ -740,6 +797,204 @@ class _DialogTareaState extends State<_DialogTarea> {
             onPressed: _enviando ? null : _crear,
             icon: const Icon(Icons.add_task, size: 16),
             label: Text(_enviando ? 'Creando…' : 'Crear tarea'),
+          ),
+        ],
+      );
+}
+
+class _DialogPullRequest extends StatefulWidget {
+  const _DialogPullRequest({
+    required this.cloud,
+    required this.projectId,
+    required this.tarea,
+    required this.ramaObjetivoProyecto,
+    required this.esOwner,
+  });
+
+  final ClienteCloud cloud;
+  final String projectId;
+  final TareaCloud tarea;
+  final String ramaObjetivoProyecto;
+  final bool esOwner;
+
+  @override
+  State<_DialogPullRequest> createState() => _DialogPullRequestState();
+}
+
+class _DialogPullRequestState extends State<_DialogPullRequest> {
+  late final TextEditingController _numero;
+  late final TextEditingController _url;
+  late final TextEditingController _origen;
+  late final TextEditingController _destino;
+  final _mergedBy = TextEditingController();
+  String _estado = 'open';
+  String _revision = 'approved';
+  bool _confirmarMerge = false;
+  bool _enviando = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final pr = widget.tarea.pullRequest;
+    _numero = TextEditingController(text: pr?.numero.toString() ?? '');
+    _url = TextEditingController(text: pr?.url ?? '');
+    _origen = TextEditingController(text: pr?.ramaOrigen ?? widget.tarea.rama);
+    _destino = TextEditingController(
+      text: pr?.ramaObjetivo ?? widget.ramaObjetivoProyecto,
+    );
+    _estado = pr?.estado.isNotEmpty == true ? pr!.estado : 'open';
+    _revision = pr?.estadoRevision?.isNotEmpty == true
+        ? pr!.estadoRevision!
+        : 'approved';
+  }
+
+  @override
+  void dispose() {
+    _numero.dispose();
+    _url.dispose();
+    _origen.dispose();
+    _destino.dispose();
+    _mergedBy.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guardar() async {
+    final numero = int.tryParse(_numero.text.trim());
+    if (numero == null ||
+        _url.text.trim().isEmpty ||
+        _origen.text.trim().isEmpty ||
+        _destino.text.trim().isEmpty ||
+        _enviando) {
+      return;
+    }
+    if (_confirmarMerge && _mergedBy.text.trim().isEmpty) {
+      setState(() => _error = 'Indica quién confirmó el merge.');
+      return;
+    }
+
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+    try {
+      await widget.cloud.upsertPullRequest(
+        projectId: widget.projectId,
+        externalId: widget.tarea.externalId,
+        githubNumber: numero,
+        url: _url.text.trim(),
+        sourceBranch: _origen.text.trim(),
+        targetBranch: _destino.text.trim(),
+        state: _estado,
+        reviewState: _revision,
+        mergedAt: _confirmarMerge ? DateTime.now() : null,
+        mergedByLogin: _confirmarMerge ? _mergedBy.text.trim() : null,
+      );
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _enviando = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        backgroundColor: context.paleta.panel,
+        title: Text(widget.tarea.pullRequest == null ? 'Registrar PR' : 'Actualizar PR'),
+        content: SizedBox(
+          width: 580,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: _numero,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Número de PR'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _url,
+                  decoration: const InputDecoration(labelText: 'URL'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _origen,
+                  decoration: const InputDecoration(labelText: 'Rama origen'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _destino,
+                  decoration: InputDecoration(
+                    labelText: 'Rama destino',
+                    helperText: 'Finaliza solo si coincide con ${widget.ramaObjetivoProyecto}.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _estado,
+                  decoration: const InputDecoration(labelText: 'Estado PR'),
+                  items: const [
+                    DropdownMenuItem(value: 'open', child: Text('open')),
+                    DropdownMenuItem(value: 'closed', child: Text('closed')),
+                    DropdownMenuItem(value: 'merged', child: Text('merged')),
+                  ],
+                  onChanged: _enviando
+                      ? null
+                      : (value) => setState(() => _estado = value ?? 'open'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _revision,
+                  decoration: const InputDecoration(labelText: 'Revisión'),
+                  items: const [
+                    DropdownMenuItem(value: 'pending', child: Text('pending')),
+                    DropdownMenuItem(value: 'approved', child: Text('approved')),
+                    DropdownMenuItem(value: 'changes_requested', child: Text('changes_requested')),
+                  ],
+                  onChanged: _enviando
+                      ? null
+                      : (value) => setState(() => _revision = value ?? 'pending'),
+                ),
+                if (widget.esOwner) ...[
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Confirmar merge'),
+                    subtitle: const Text('Solo owner; registra fecha y autor del merge.'),
+                    value: _confirmarMerge,
+                    onChanged: _enviando
+                        ? null
+                        : (value) => setState(() => _confirmarMerge = value),
+                  ),
+                  if (_confirmarMerge)
+                    TextField(
+                      controller: _mergedBy,
+                      decoration: const InputDecoration(labelText: 'Merged by login'),
+                    ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_error!, style: TextStyle(color: context.paleta.critico)),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _enviando ? null : () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: _enviando ? null : _guardar,
+            icon: const Icon(Icons.save_outlined, size: 16),
+            label: Text(_enviando ? 'Guardando…' : 'Guardar PR'),
           ),
         ],
       );

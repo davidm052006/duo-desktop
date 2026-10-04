@@ -266,6 +266,10 @@ class ClienteCloud {
     );
   }
 
+  Future<void> aceptarInvitacion(String token) async {
+    await _enviar('POST', '/api/invitations/${Uri.encodeComponent(token)}/accept');
+  }
+
   Future<void> upsertTarea({
     required String projectId,
     required String externalId,
@@ -287,6 +291,34 @@ class ClienteCloud {
         'branch': rama,
         'assignedUserId': assignedUserId,
         'workProvider': workProvider,
+      },
+    );
+  }
+
+  Future<void> upsertPullRequest({
+    required String projectId,
+    required String externalId,
+    required int githubNumber,
+    required String url,
+    required String sourceBranch,
+    required String targetBranch,
+    required String state,
+    String? reviewState,
+    DateTime? mergedAt,
+    String? mergedByLogin,
+  }) async {
+    await _enviar(
+      'POST',
+      '/api/projects/$projectId/tasks/${Uri.encodeComponent(externalId)}/pull-request',
+      cuerpo: {
+        'githubNumber': githubNumber,
+        'url': url,
+        'sourceBranch': sourceBranch,
+        'targetBranch': targetBranch,
+        'state': state,
+        'reviewState': reviewState,
+        'mergedAt': mergedAt?.toUtc().toIso8601String(),
+        'mergedByLogin': mergedByLogin,
       },
     );
   }

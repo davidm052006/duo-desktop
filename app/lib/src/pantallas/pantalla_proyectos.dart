@@ -49,6 +49,15 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
     if (creado == true && mounted) _refrescar();
   }
 
+  Future<void> _aceptarInvitacion() async {
+    final aceptada = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DialogAceptarInvitacion(cloud: _cloud),
+    );
+    if (aceptada == true && mounted) _refrescar();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_abierto != null) {
@@ -113,6 +122,12 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
               onPressed: _refrescar,
               icon: const Icon(Icons.sync, size: 16),
               label: const Text('Actualizar'),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: ConfigCloud.configurado ? _aceptarInvitacion : null,
+              icon: const Icon(Icons.vpn_key_outlined, size: 16),
+              label: const Text('Aceptar invitación'),
             ),
             const SizedBox(width: 10),
             FilledButton.icon(
@@ -377,6 +392,87 @@ class _PanelError extends StatelessWidget {
             ),
           ],
         ),
+      );
+}
+
+class _DialogAceptarInvitacion extends StatefulWidget {
+  const _DialogAceptarInvitacion({required this.cloud});
+
+  final ClienteCloud cloud;
+
+  @override
+  State<_DialogAceptarInvitacion> createState() =>
+      _DialogAceptarInvitacionState();
+}
+
+class _DialogAceptarInvitacionState extends State<_DialogAceptarInvitacion> {
+  final _token = TextEditingController();
+  bool _enviando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _token.dispose();
+    super.dispose();
+  }
+
+  Future<void> _aceptar() async {
+    final token = _token.text.trim();
+    if (token.isEmpty || _enviando) return;
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+    try {
+      await widget.cloud.aceptarInvitacion(token);
+      if (mounted) Navigator.pop(context, true);
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _enviando = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        backgroundColor: context.paleta.panel,
+        title: const Text('Aceptar invitación'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Pega el token recibido. Se usa una vez y no se guarda en Duo Desktop.',
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _token,
+                autofocus: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: 'Token de invitación'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: TextStyle(color: context.paleta.critico)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _enviando ? null : () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: _enviando ? null : _aceptar,
+            child: Text(_enviando ? 'Aceptando…' : 'Aceptar'),
+          ),
+        ],
       );
 }
 
