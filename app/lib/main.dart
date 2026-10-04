@@ -11,6 +11,7 @@ import 'src/auth/config_supabase.dart';
 import 'src/auth/puerta_auth.dart';
 import 'src/estado/estado_tablero.dart';
 import 'src/pantallas/fondo_video_config.dart';
+import 'src/pantallas/marco_app.dart';
 import 'src/tema/tema.dart';
 
 Future<void> main() async {
@@ -22,16 +23,12 @@ Future<void> main() async {
     SharedPreferencesLinux.registerWith();
   }
 
-  if (!ConfigSupabase.configurado) {
-    throw StateError(
-      'Faltan SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY. Usa --dart-define.',
+  if (ConfigSupabase.configurado) {
+    await Supabase.initialize(
+      url: ConfigSupabase.url,
+      publishableKey: ConfigSupabase.publishableKey,
     );
   }
-
-  await Supabase.initialize(
-    url: ConfigSupabase.url,
-    publishableKey: ConfigSupabase.publishableKey,
-  );
 
   await FondoVideoConfig.inicializarPersistencia();
   await FondoVideoConfig.cargarPreferenciasVisuales();
@@ -53,7 +50,9 @@ class AppDuo extends StatelessWidget {
           theme: TemaDuo.claro(opacidadPaneles: opacidadPaneles),
           darkTheme: TemaDuo.oscuro(opacidadPaneles: opacidadPaneles),
           themeMode: ThemeMode.dark,
-          home: const PuertaAuth(),
+          home: ConfigSupabase.configurado
+              ? const PuertaAuth()
+              : const MarcoApp(),
         ),
       ),
     );
