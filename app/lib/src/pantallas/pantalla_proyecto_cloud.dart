@@ -208,11 +208,16 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
                 future: _miembros,
                 builder: (context, miembrosSnap) => _VistaTareas(
                   carga: _tareas,
+                  proyecto: widget.proyecto,
+                  cloud: _cloud,
                   puedeEditar: puedeEditar,
                   crear: miembrosSnap.hasData
                       ? () => _crearTarea(miembrosSnap.data!)
                       : null,
                   editarPullRequest: puedeEditar ? _editarPullRequest : null,
+                  alCambiarCloud: () {
+                    if (mounted) setState(_recargar);
+                  },
                 ),
               ),
               _VistaRevisiones(
@@ -291,15 +296,21 @@ class _VistaMiembros extends StatelessWidget {
 class _VistaTareas extends StatelessWidget {
   const _VistaTareas({
     required this.carga,
+    required this.proyecto,
+    required this.cloud,
     required this.puedeEditar,
     required this.crear,
     required this.editarPullRequest,
+    required this.alCambiarCloud,
   });
 
   final Future<List<TareaCloud>> carga;
+  final ProyectoCloud proyecto;
+  final ClienteCloud cloud;
   final bool puedeEditar;
   final VoidCallback? crear;
   final ValueChanged<TareaCloud>? editarPullRequest;
+  final VoidCallback alCambiarCloud;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<TareaCloud>>(
@@ -341,6 +352,9 @@ class _VistaTareas extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _TarjetaTarea(
                       tarea: tarea,
+                      proyecto: proyecto,
+                      cloud: cloud,
+                      alCambiarCloud: alCambiarCloud,
                       editarPullRequest: editarPullRequest == null
                           ? null
                           : () => editarPullRequest!(tarea),
@@ -404,8 +418,18 @@ class _VistaRevisiones extends StatelessWidget {
 }
 
 class _TarjetaTarea extends StatelessWidget {
-  const _TarjetaTarea({required this.tarea, this.editarPullRequest});
+  const _TarjetaTarea({
+    required this.tarea,
+    required this.proyecto,
+    required this.cloud,
+    required this.alCambiarCloud,
+    this.editarPullRequest,
+  });
+
   final TareaCloud tarea;
+  final ProyectoCloud proyecto;
+  final ClienteCloud cloud;
+  final VoidCallback alCambiarCloud;
   final VoidCallback? editarPullRequest;
 
   @override
@@ -419,32 +443,46 @@ class _TarjetaTarea extends StatelessWidget {
         tono: _tonoEstado(context, tarea.estado),
         mono: true,
       ),
-      hijo: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+      hijo: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Insignia(
-            tarea.assignedEmail ?? 'sin asignar',
-            tono: paleta.tintaSecundaria,
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              Insignia(
+                tarea.assignedEmail ?? 'sin asignar',
+                tono: paleta.tintaSecundaria,
+              ),
+              Insignia(
+                tarea.workProvider,
+                tono: const Color(0xFF9D5CFF),
+                mono: true,
+              ),
+              Insignia(tarea.rama, tono: paleta.acentoAlt, mono: true),
+              if (tarea.pullRequest != null)
+                Insignia(
+                  'PR #${tarea.pullRequest!.numero}',
+                  tono: paleta.acento,
+                  mono: true,
+                ),
+              if (editarPullRequest != null)
+                ActionChip(
+                  avatar: const Icon(Icons.merge_type, size: 16),
+                  label: Text(
+                    tarea.pullRequest == null ? 'Registrar PR' : 'Actualizar PR',
+                  ),
+                  onPressed: editarPullRequest,
+                ),
+            ],
           ),
-          Insignia(
-            tarea.workProvider,
-            tono: const Color(0xFF9D5CFF),
-            mono: true,
+          const SizedBox(height: 14),
+          PanelTrabajoLocal(
+            proyecto: proyecto,
+            tarea: tarea,
+            cloud: cloud,
+            alCambiarCloud: alCambiarCloud,
           ),
-          Insignia(tarea.rama, tono: paleta.acentoAlt, mono: true),
-          if (tarea.pullRequest != null)
-            Insignia(
-              'PR #${tarea.pullRequest!.numero}',
-              tono: paleta.acento,
-              mono: true,
-            ),
-          if (editarPullRequest != null)
-            ActionChip(
-              avatar: const Icon(Icons.merge_type, size: 16),
-              label: Text(tarea.pullRequest == null ? 'Registrar PR' : 'Actualizar PR'),
-              onPressed: editarPullRequest,
-            ),
         ],
       ),
     );
