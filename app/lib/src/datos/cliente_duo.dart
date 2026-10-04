@@ -362,6 +362,19 @@ class ClienteDuo {
   }
 
 
+  Future<String?> repositorioLocal(String projectId) async {
+    try {
+      final json = await _jsonRequest(
+        'GET',
+        '/git/repository/${Uri.encodeComponent(projectId)}',
+      );
+      final path = json['repositoryPath'];
+      return path == null ? null : '$path';
+    } on FalloDuo catch (e) {
+      if (e.codigo == 'repository_not_configured') return null;
+      rethrow;
+    }
+  }
   Future<void> configurarRepositorioLocal({
     required String projectId,
     required String projectSlug,
