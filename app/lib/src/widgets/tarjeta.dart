@@ -33,8 +33,21 @@ class Tarjeta extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: paleta.panel,
-        border: Border.all(color: paleta.rejilla),
-        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: paleta.acentoAlt.withValues(alpha: .16),
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: paleta.acento.withValues(alpha: .045),
+            blurRadius: 24,
+            spreadRadius: 1,
+          ),
+          BoxShadow(
+            color: paleta.acentoAlt.withValues(alpha: .035),
+            blurRadius: 18,
+          ),
+        ],
       ),
       padding: relleno,
       child: Column(
