@@ -145,12 +145,18 @@ jobs:
         working-directory: app
         run: flutter analyze --no-fatal-infos
 
-      - name: Extract version from tag
+      - name: Resolve version
         id: ver
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            # Every push to main gets a strictly increasing version so
+            # DuoLauncher (which compares SemVer) picks it up as an update.
+            BASE=$(sed -n 's/^version: *\([0-9]*\.[0-9]*\)\..*/\1/p' app/pubspec.yaml)
+            VERSION="${BASE}.${GITHUB_RUN_NUMBER}"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved version: ${VERSION}"
 
@@ -205,6 +211,36 @@ jobs:
           "artifact_name=DuoDesktop-${version}-windows-x64.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Get-ChildItem artifacts
 
+      # DuoLauncher update payload: a zip with app\ and service\ at its root,
+      # plus latest.json, which the launcher reads from the latest release.
+      - name: Package DuoLauncher update
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.ver.outputs.version }}"
+          $tag = "v$version"
+          $stage = "artifacts\DuoDesktop-${version}-windows-x64"
+          $updateName = "DuoDesktop-${version}-windows-x64-update.zip"
+          $update = "artifacts\launcher-update\$updateName"
+          New-Item -ItemType Directory -Force -Path "artifacts\launcher-update" | Out-Null
+
+          foreach ($required in "app\duo_desktop.exe", "app\flutter_windows.dll", "app\libcef.dll", "service\DuoDesktop.Service.exe") {
+            if (-not (Test-Path "$stage\$required")) { throw "Update payload missing $required" }
+          }
+          Compress-Archive -Path "$stage\app", "$stage\service" -DestinationPath $update -Force
+
+          $sha = (Get-FileHash $update -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest = [ordered]@{
+            version = $version
+            channel = "beta"
+            url = "https://github.com/${{ github.repository }}/releases/download/$tag/$updateName"
+            sha256 = $sha
+            minimumLauncherVersion = "1.0.0"
+            mandatory = $false
+          }
+          $manifest | ConvertTo-Json | Set-Content "artifacts\launcher-update\latest.json" -Encoding utf8NoBOM
+          Get-Content "artifacts\launcher-update\latest.json"
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
@@ -212,6 +248,46 @@ jobs:
           path: artifacts/DuoDesktop-*-windows-x64.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload DuoLauncher update
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-update
+          path: artifacts/launcher-update/*
+          if-no-files-found: error
+          retention-days: 14
+
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+
+  publish-windows-update:
+    name: Publish DuoLauncher update
+    needs: [windows]
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/main' && success()
+
+    steps:
+      - name: Download DuoLauncher update
+        uses: actions/download-artifact@v4
+        with:
+          name: launcher-update
+          path: launcher-update
+
+      # Non-prerelease so /releases/latest (what DuoLauncher queries) returns it.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.windows.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Duo Desktop ${{ needs.windows.outputs.version }} (beta)
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          files: |
+            launcher-update/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release:
     name: Publish GitHub Release
