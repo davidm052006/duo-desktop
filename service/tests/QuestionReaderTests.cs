@@ -40,6 +40,17 @@ public sealed class QuestionReaderTests : IDisposable
     }
 
     [Fact]
+    public void Read_accepts_a_legacy_project_path_in_duo_p()
+    {
+        var board = ConfigureProject();
+        Environment.SetEnvironmentVariable("DUO_P", board);
+
+        var response = NewReader().Read();
+
+        Assert.Empty(response.Questions);
+    }
+
+    [Fact]
     public void Read_rejects_a_question_without_a_board_task()
     {
         var board = ConfigureProject();

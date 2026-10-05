@@ -66,6 +66,11 @@ public sealed class DuoProjectLocator(ILogger<DuoProjectLocator> log)
         {
             var hit = all.FirstOrDefault(p =>
                 string.Equals(p.Name, wanted, StringComparison.OrdinalIgnoreCase));
+            // Some desktop launchers historically passed the repository or
+            // board directory instead of the project's name. Accept that
+            // unambiguous legacy value so installed Windows/Linux copies do
+            // not fail with board_not_found.
+            hit ??= all.FirstOrDefault(p => p.AllDirs.Any(d => SamePath(wanted, d)));
             return hit ?? throw BoardException.NotFound($"DUO_P={wanted} no corresponde a ningún proyecto");
         }
 
@@ -87,6 +92,18 @@ public sealed class DuoProjectLocator(ILogger<DuoProjectLocator> log)
         var p = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
         var r = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
         return p == r || p.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
+    private static bool SamePath(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception) { return false; }
     }
 
     private static DuoProject? TryParse(string confPath)
