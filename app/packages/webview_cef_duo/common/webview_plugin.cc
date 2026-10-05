@@ -651,7 +651,9 @@ namespace webview_cef {
 	}
 
 	void WebviewPlugin::tickBeginFrame(){
-		if (m_handler) {
+		// CEF starts lazily on the first "init" call; until then it has no UI
+		// task runner and every posted BeginFrame only logs a warning.
+		if (isCefInitialized && m_handler) {
 			m_handler->sendExternalBeginFrame();
 		}
 	}
@@ -755,7 +757,7 @@ namespace webview_cef {
 		//cef message run in another thread on windows/linux
 		cefs.multi_threaded_message_loop = true;
 #endif
-		CefInitialize(mainArgs, cefs, app.get(), nullptr);
+		isCefInitialized = CefInitialize(mainArgs, cefs, app.get(), nullptr);
 	}
 
 	void doMessageLoopWork(){
