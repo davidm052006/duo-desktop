@@ -28,6 +28,11 @@ public sealed record DuoProject(
 
 public sealed class DuoProjectLocator(ILogger<DuoProjectLocator> log)
 {
+    // Desktop distributions target this project.  Versions released before
+    // launcher-config.json gained duoProject did not set DUO_P, so keep those
+    // installations usable after an in-place application update.
+    private const string DesktopDefaultProject = "duo-desktop";
+
     // Las conf de duo son fish: `set -g CLAVE valor`, el valor a veces entre
     // comillas. No se ejecuta nada: se lee como texto.
     private static readonly Regex SetLine =
@@ -81,6 +86,13 @@ public sealed class DuoProjectLocator(ILogger<DuoProjectLocator> log)
         var cwd = Directory.GetCurrentDirectory();
         var byLocation = all.FirstOrDefault(p => p.AllDirs.Any(d => IsInside(cwd, d)));
         if (byLocation is not null) return byLocation;
+
+        // Compatibility for already-installed Windows and Linux launchers.
+        // Only choose the default when it is an exact configured project;
+        // otherwise retain the CLI's deliberate ambiguity error.
+        var desktopDefault = all.FirstOrDefault(p =>
+            string.Equals(p.Name, DesktopDefaultProject, StringComparison.OrdinalIgnoreCase));
+        if (desktopDefault is not null) return desktopDefault;
 
         throw BoardException.NotFound(
             $"hay {all.Count} proyectos de duo, DUO_P no está definido y {cwd} " +

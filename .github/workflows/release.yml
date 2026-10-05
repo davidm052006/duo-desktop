@@ -39,7 +39,7 @@ jobs:
             libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libgbm1 \
             libasound2t64 libpangocairo-1.0-0 libwebkit2gtk-4.1-dev \
-            curl unzip xz-utils git
+            libmpv-dev curl unzip xz-utils git
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -260,6 +260,10 @@ jobs:
           Copy-Item "$stage\app", "$stage\service" "$portable\versions\$version" -Recurse
           Copy-Item artifacts\launcher-bin\DuoLauncher.exe $portable
           Copy-Item installer\windows\launcher-config.json, installer\windows\duo.ico, installer\windows\LEEME.txt $portable
+          $launcherConfig = Get-Content "$portable\launcher-config.json" -Raw | ConvertFrom-Json
+          if ([string]::IsNullOrWhiteSpace($launcherConfig.duoProject)) {
+            throw "launcher-config.json must declare duoProject so installed copies select a board."
+          }
           @{ version = $version } | ConvertTo-Json | Set-Content "$portable\current.json" -Encoding utf8NoBOM
 
           Compress-Archive -Path $portable -DestinationPath "$out\DuoDesktop-${version}-windows-x64-portable.zip" -Force
