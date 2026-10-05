@@ -241,6 +241,36 @@ jobs:
           $manifest | ConvertTo-Json | Set-Content "artifacts\launcher-update\latest.json" -Encoding utf8NoBOM
           Get-Content "artifacts\launcher-update\latest.json"
 
+      # DuoLauncher.exe (with the Duo icon) is not built from this repo; it is
+      # kept as an asset of the launcher-v1.0.0 pre-release.
+      - name: Build installer and portable launcher folder
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.ver.outputs.version }}"
+          $stage = "artifacts\DuoDesktop-${version}-windows-x64"
+          $portable = "artifacts\portable\DuoDesktop-beta-windows-x64"
+          $out = "artifacts\launcher-update"
+
+          gh release download launcher-v1.0.0 --repo "${{ github.repository }}" --pattern DuoLauncher.exe --dir artifacts\launcher-bin
+
+          New-Item -ItemType Directory -Force -Path "$portable\versions\$version" | Out-Null
+          Copy-Item "$stage\app", "$stage\service" "$portable\versions\$version" -Recurse
+          Copy-Item artifacts\launcher-bin\DuoLauncher.exe $portable
+          Copy-Item installer\windows\launcher-config.json, installer\windows\duo.ico, installer\windows\LEEME.txt $portable
+          @{ version = $version } | ConvertTo-Json | Set-Content "$portable\current.json" -Encoding utf8NoBOM
+
+          Compress-Archive -Path $portable -DestinationPath "$out\DuoDesktop-${version}-windows-x64-portable.zip" -Force
+
+          choco install innosetup --no-progress -y
+          $iscc = (Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe", "$env:ProgramFiles\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$((Resolve-Path $portable).Path)" "/DOutputDir=$((Resolve-Path $out).Path)" installer\windows\duo-desktop.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+          Get-ChildItem $out
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:

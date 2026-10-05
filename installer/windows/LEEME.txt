@@ -1,0 +1,17 @@
+﻿DUO DESKTOP (beta) - Windows
+
+Opcion A - Instalador (recomendado)
+  Ejecuta DuoDesktop-Setup-<version>.exe. No necesita permisos de administrador.
+  Puedes marcar "Crear un acceso directo en el escritorio".
+  Queda en el menu Inicio y se desinstala desde Configuracion > Aplicaciones.
+
+Opcion B - Carpeta portable
+  1. Descomprime la carpeta donde quieras (por ejemplo en Documentos).
+     No la ejecutes desde dentro del .zip.
+  2. Abre DuoLauncher.exe. Puedes mover la carpeta completa,
+     pero no saques DuoLauncher.exe de ella.
+
+Si Windows muestra "Windows protegio su PC", pulsa "Mas informacion" > "Ejecutar de todas formas".
+Duo Desktop busca actualizaciones al abrirse y las instala sin perder tus datos.
+
+Requisitos: Windows 10/11 de 64 bits.
