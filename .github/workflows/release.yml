@@ -19,7 +19,6 @@ permissions:
 jobs:
   linux:
     name: Build Linux
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -58,11 +57,20 @@ jobs:
         working-directory: app
         run: flutter analyze --no-fatal-infos
 
-      - name: Extract version from tag
+      - name: Resolve version
         id: ver
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            PUBSPEC_VERSION=$(sed -n 's/^version: *\([0-9]*\.[0-9]*\.[0-9]*\)+[0-9]*$/\1/p' app/pubspec.yaml)
+            if [[ "${VERSION}" != "${PUBSPEC_VERSION}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} does not match app/pubspec.yaml version ${PUBSPEC_VERSION}" >&2
+              exit 1
+            fi
+          else
+            BASE=$(sed -n 's/^version: *\([0-9]*\.[0-9]*\)\..*/\1/p' app/pubspec.yaml)
+            VERSION="${BASE}.${GITHUB_RUN_NUMBER}"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved version: ${VERSION}"
 
@@ -81,7 +89,7 @@ jobs:
 
           if [[ -x "app/scripts/build-deb.sh" ]]; then
             echo "Using app/scripts/build-deb.sh"
-            bash app/scripts/build-deb.sh
+            DUO_DESKTOP_VERSION="${VERSION}" bash app/scripts/build-deb.sh
             DEB=$(find . -name "duo-desktop_*_amd64.deb" -type f | head -n1)
             if [[ -z "${DEB}" ]]; then
               echo "build-deb.sh did not produce a .deb" >&2
@@ -98,13 +106,58 @@ jobs:
           echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
           ls -lh "${OUT_DIR}/"
 
+      # DuoLauncher consumes a platform-specific payload, not the .deb.  The
+      # package above contains the same seed under this path, so create the
+      # update ZIP from it and publish the manifest it queries on every start.
+      - name: Package Linux launcher update
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v${VERSION}"
+          SEED="app/build/linux-deb/root/usr/lib/duo-desktop/seed"
+          OUT_DIR="artifacts/launcher-update"
+          UPDATE_NAME="DuoDesktop-${VERSION}-linux-x64-update.zip"
+
+          for required in \
+            "${SEED}/versions/${VERSION}/app/duo_desktop" \
+            "${SEED}/versions/${VERSION}/app/lib/libflutter_linux_gtk.so" \
+            "${SEED}/versions/${VERSION}/service/DuoDesktop.Service"; do
+            [[ -f "${required}" ]] || { echo "Update payload missing ${required}" >&2; exit 1; }
+          done
+
+          mkdir -p "${OUT_DIR}"
+          (cd "${SEED}/versions/${VERSION}" && zip -r "${GITHUB_WORKSPACE}/${OUT_DIR}/${UPDATE_NAME}" app service)
+          SHA256=$(sha256sum "${OUT_DIR}/${UPDATE_NAME}" | awk '{print $1}')
+          cat > "${OUT_DIR}/latest-linux.json" <<EOF
+          {
+            "version": "${VERSION}",
+            "channel": "beta",
+            "url": "https://github.com/${{ github.repository }}/releases/download/${TAG}/${UPDATE_NAME}",
+            "sha256": "${SHA256}",
+            "minimumLauncherVersion": "1.0.0",
+            "mandatory": false
+          }
+          EOF
+          cat "${OUT_DIR}/latest-linux.json"
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-artifact
-          path: artifacts/*
+          path: artifacts/${{ steps.package.outputs.artifact_name }}
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload Linux launcher update
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-launcher-update
+          path: artifacts/launcher-update/*
+          if-no-files-found: error
+          retention-days: 14
+
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
 
   windows:
     name: Build Windows portable
@@ -295,8 +348,8 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
 
   publish-windows-update:
-    name: Publish DuoLauncher update
-    needs: [windows]
+    name: Publish desktop launcher updates
+    needs: [linux, windows]
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && success()
 
@@ -306,6 +359,16 @@ jobs:
         with:
           name: launcher-update
           path: launcher-update
+
+      - name: Download Linux launcher update
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-launcher-update
+          path: linux-launcher-update
+
+      - name: Verify matching platform versions
+        run: |
+          test "${{ needs.linux.outputs.version }}" = "${{ needs.windows.outputs.version }}"
 
       # Non-prerelease so /releases/latest (what DuoLauncher queries) returns it.
       - name: Create GitHub Release
@@ -320,6 +383,7 @@ jobs:
           generate_release_notes: true
           files: |
             launcher-update/*
+            linux-launcher-update/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -345,6 +409,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-artifact
+          path: release-assets
+
+      - name: Download Linux launcher update
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-launcher-update
           path: release-assets
 
       - name: Generate checksums

@@ -39,10 +39,10 @@ command -v dotnet >/dev/null 2>&1 || {
 }
 
 PUBSPEC="$APP_ROOT/pubspec.yaml"
-VERSION_FULL="$(awk '/^version:[[:space:]]*/ {print $2; exit}' "$PUBSPEC")"
-if [[ ! "$VERSION_FULL" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+VERSION_FULL="${DUO_DESKTOP_VERSION:-$(awk '/^version:[[:space:]]*/ {print $2; exit}' "$PUBSPEC")}"
+if [[ ! "$VERSION_FULL" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9]+)?$ ]]; then
   echo "Unsupported or missing pubspec version: ${VERSION_FULL:-<empty>}" >&2
-  echo "Expected X.Y.Z+N" >&2
+  echo "Expected X.Y.Z or X.Y.Z+N" >&2
   exit 1
 fi
 VERSION="${VERSION_FULL%%+*}"

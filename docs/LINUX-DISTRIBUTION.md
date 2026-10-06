@@ -65,11 +65,13 @@ unzip DuoDesktop-beta-linux-x64.zip -d "$HOME/Applications/DuoDesktop"
 "$HOME/Applications/DuoDesktop/DuoLauncher"
 ```
 
-El launcher consulta `latest-linux.json` en GitHub Releases. Si hay una versión
-nueva, descarga `DuoDesktop-X.Y.Z-linux-x64.zip`, comprueba su SHA-256, la
-activa de forma atómica y conserva la versión anterior para volver atrás si la
-nueva no inicia. Los datos, perfiles CEF y registro del launcher se conservan
-en `~/.local/share/DuoDesktop`, fuera de las versiones instaladas.
+El launcher consulta `latest-linux.json` en GitHub Releases. Cada publicación
+desde `main` o por tag publica ese manifiesto y el payload
+`DuoDesktop-X.Y.Z-linux-x64-update.zip`. Si hay una versión nueva, la descarga,
+comprueba su SHA-256, la activa de forma atómica y conserva la versión anterior
+para volver atrás si la nueva no inicia. Los datos, perfiles CEF y registro del
+launcher se conservan en `~/.local/share/DuoDesktop`, fuera de las versiones
+instaladas.
 
 No se debe ejecutar directamente `versions/*/app/duo_desktop`: así se omite el
 servicio local y el mecanismo de actualización.
