@@ -56,12 +56,13 @@ duo-desktop
 
 ## Launcher portable con actualización automática
 
-Para CachyOS y otras distribuciones no Debian, cada release también publica
-`DuoDesktop-beta-linux-x64.zip`. Se extrae una sola vez en una carpeta que no
-se vaya a borrar y se inicia siempre con `DuoLauncher`:
+Para CachyOS y otras distribuciones no Debian, cada publicación también incluye
+`DuoDesktop-X.Y.Z-linux-x64-portable.zip`. Se extrae una sola vez en una carpeta
+que no se vaya a borrar y se inicia siempre con `DuoLauncher`:
 
 ```bash
-unzip DuoDesktop-beta-linux-x64.zip -d "$HOME/Applications/DuoDesktop"
+mkdir -p "$HOME/Applications/DuoDesktop"
+unzip DuoDesktop-X.Y.Z-linux-x64-portable.zip -d "$HOME/Applications/DuoDesktop"
 "$HOME/Applications/DuoDesktop/DuoLauncher"
 ```
 

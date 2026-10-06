@@ -140,6 +140,34 @@ jobs:
           EOF
           cat "${OUT_DIR}/latest-linux.json"
 
+      # The .deb is one installation path, but publish a complete portable
+      # layout too.  It mirrors the Windows portable launcher: users extract
+      # it once, always run DuoLauncher, and receive the smaller update ZIPs.
+      - name: Package Linux portable launcher
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          SEED="app/build/linux-deb/root/usr/lib/duo-desktop/seed"
+          OUT_DIR="artifacts/launcher-update"
+          PORTABLE="${OUT_DIR}/DuoDesktop-beta-linux-x64"
+          ARCHIVE="${OUT_DIR}/DuoDesktop-${VERSION}-linux-x64-portable.zip"
+
+          for required in \
+            "${SEED}/DuoLauncher" \
+            "${SEED}/launcher-config.json" \
+            "${SEED}/current.json" \
+            "${SEED}/versions/${VERSION}/app/duo_desktop" \
+            "${SEED}/versions/${VERSION}/service/DuoDesktop.Service"; do
+            [[ -f "${required}" ]] || { echo "Portable launcher missing ${required}" >&2; exit 1; }
+          done
+
+          rm -rf "${PORTABLE}"
+          mkdir -p "${PORTABLE}"
+          cp -a "${SEED}/DuoLauncher" "${SEED}/launcher-config.json" "${SEED}/current.json" "${PORTABLE}/"
+          cp -a "${SEED}/versions" "${PORTABLE}/versions"
+          (cd "${PORTABLE}" && zip -r "${GITHUB_WORKSPACE}/${ARCHIVE}" .)
+          ls -lh "${ARCHIVE}"
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
