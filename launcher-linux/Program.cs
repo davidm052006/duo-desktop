@@ -15,8 +15,12 @@ internal static class Program
     private const string LauncherVersion = "1.0.0";
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
-    public static async Task<int> Main()
+    public static async Task<int> Main(string[] args)
     {
+        // A running app starts this mode after the user accepts an update. Give
+        // its original launcher time to release the service and executable.
+        if (args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase))
+            await Task.Delay(TimeSpan.FromMilliseconds(750));
         var root = AppContext.BaseDirectory;
         var dataRoot = Path.Combine(Environment.GetEnvironmentVariable("XDG_DATA_HOME") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share"), "DuoDesktop");
         Directory.CreateDirectory(Path.Combine(dataRoot, "logs"));
@@ -112,6 +116,8 @@ internal static class Program
         info.Environment["DUO_SERVICE_PORT"] = port.ToString();
         info.Environment["DUO_TOKEN"] = token;
         info.Environment["DUO_DATA_DIR"] = dataRoot;
+        info.Environment["DUO_LAUNCHER_PATH"] = Environment.ProcessPath ?? throw new InvalidOperationException("No se pudo determinar el lanzador.");
+        info.Environment["DUO_VERSION"] = Directory.GetParent(Path.GetDirectoryName(executable)!)?.Name ?? "";
         if (!string.IsNullOrWhiteSpace(duoProject)) info.Environment["DUO_P"] = duoProject;
         return Process.Start(info) ?? throw new InvalidOperationException($"No se pudo iniciar {Path.GetFileName(executable)}.");
     }

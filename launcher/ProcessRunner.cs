@@ -29,6 +29,10 @@ public sealed class ProcessRunner
         info.Environment["DUO_SERVICE_PORT"] = port.ToString();
         info.Environment["DUO_TOKEN"] = token;
         info.Environment["DUO_DATA_DIR"] = dataRoot;
+        // The running Flutter process uses this only to hand an accepted update
+        // back to this trusted launcher. It never installs an archive itself.
+        info.Environment["DUO_LAUNCHER_PATH"] = Environment.ProcessPath ?? throw new InvalidOperationException("Launcher path is unavailable.");
+        info.Environment["DUO_VERSION"] = Directory.GetParent(Path.GetDirectoryName(executable)!)?.Name ?? "";
         if (!string.IsNullOrWhiteSpace(duoProject)) info.Environment["DUO_P"] = duoProject;
         return Process.Start(info) ?? throw new InvalidOperationException("Could not start Duo process.");
     }

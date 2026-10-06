@@ -5,10 +5,10 @@ namespace DuoLauncher;
 internal static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new LauncherForm());
+        Application.Run(new LauncherForm(args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase)));
     }
 }
 
@@ -24,9 +24,11 @@ internal sealed class LauncherForm : Form
     private readonly string _dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DuoDesktop");
     private CancellationTokenSource? _cancellation;
     private bool _installing;
+    private readonly bool _applyUpdate;
 
-    public LauncherForm()
+    public LauncherForm(bool applyUpdate)
     {
+        _applyUpdate = applyUpdate;
         Text = "Duo Desktop"; Size = new Size(480, 300); FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false; MinimizeBox = false; StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(18, 15, 34); ForeColor = Color.White;
@@ -51,6 +53,7 @@ internal sealed class LauncherForm : Form
         _cancellation = new CancellationTokenSource();
         try
         {
+            if (_applyUpdate) await Task.Delay(750, _cancellation.Token);
             Directory.CreateDirectory(_dataRoot);
             foreach (var name in new[] { "logs", "config", "cef", "updates" }) Directory.CreateDirectory(Path.Combine(_dataRoot, name));
             var store = new ReleaseStore(_root);
@@ -77,10 +80,12 @@ internal sealed class LauncherForm : Form
             if (update is not null)
             {
                 _versions.Text = $"Actual: {current.Version}  ·  Nueva: {update.Version}";
-                var choice = update.Mandatory
-                    ? MessageBox.Show(this, $"La actualización {update.Version} es obligatoria.", "Duo Desktop", MessageBoxButtons.OK, MessageBoxIcon.Information)
-                    : MessageBox.Show(this, $"Nueva versión {update.Version} disponible.\n\n¿Actualizar ahora?", "Duo Desktop", MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
-                if (update.Mandatory || choice == DialogResult.Yes)
+                var choice = _applyUpdate
+                    ? DialogResult.Yes
+                    : update.Mandatory
+                        ? MessageBox.Show(this, $"La actualización {update.Version} es obligatoria.", "Duo Desktop", MessageBoxButtons.OK, MessageBoxIcon.Information)
+                        : MessageBox.Show(this, $"Nueva versión {update.Version} disponible.\n\n¿Actualizar ahora?", "Duo Desktop", MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
+                if (_applyUpdate || update.Mandatory || choice == DialogResult.Yes)
                 {
                     current = await InstallAsync(store, update, current, _cancellation.Token);
                     _versions.Text = $"Versión actual: {current.Version}";

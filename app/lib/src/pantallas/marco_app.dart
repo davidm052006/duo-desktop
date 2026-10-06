@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../actualizaciones/estado_actualizacion.dart';
 import '../estado/estado_tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/fondo_cyber_animado.dart';
@@ -329,6 +330,8 @@ class _BarraMarca extends StatelessWidget {
               ),
             ],
             const Spacer(),
+            const _CentroNotificaciones(),
+            const SizedBox(width: 12),
             if (mostrarEstadoVideo &&
                 (videoSeleccionado != null || estadoFondoVideo != null)) ...[
               Tooltip(
@@ -360,6 +363,130 @@ class _BarraMarca extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CentroNotificaciones extends StatelessWidget {
+  const _CentroNotificaciones();
+
+  @override
+  Widget build(BuildContext context) {
+    // Algunas vistas se reutilizan en previsualizaciones sin el proveedor
+    // global; en ese caso se muestra la campana desactivada.
+    final actualizaciones = context.watch<EstadoActualizacion?>();
+    final paleta = context.paleta;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Notificaciones',
+          icon: const Icon(Icons.notifications_none, size: 20),
+          onPressed: actualizaciones == null
+              ? null
+              : () {
+            actualizaciones.marcaLeida();
+            showDialog<void>(
+              context: context,
+              builder: (_) => const _DialogoNotificaciones(),
+            );
+          },
+        ),
+        if (actualizaciones?.hayActualizacion == true && !actualizaciones!.leida)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: paleta.acento,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _DialogoNotificaciones extends StatelessWidget {
+  const _DialogoNotificaciones();
+
+  @override
+  Widget build(BuildContext context) {
+    final actualizaciones = context.watch<EstadoActualizacion>();
+    final paleta = context.paleta;
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.notifications_outlined),
+          SizedBox(width: 10),
+          Text('Notificaciones'),
+        ],
+      ),
+      content: SizedBox(
+        width: 390,
+        child: actualizaciones.hayActualizacion
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Actualización ${actualizaciones.versionNueva} disponible',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    actualizaciones.obligatoria
+                        ? 'Esta actualización es obligatoria.'
+                        : 'Está lista para instalarse. Duo se reiniciará automáticamente.',
+                  ),
+                  if (actualizaciones.error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      actualizaciones.error!,
+                      style: TextStyle(color: paleta.aviso),
+                    ),
+                  ],
+                ],
+              )
+            : Text(
+                actualizaciones.comprobando
+                    ? 'Buscando actualizaciones…'
+                    : actualizaciones.error == null
+                    ? 'No tienes notificaciones nuevas.'
+                    : 'No se pudo comprobar actualizaciones. Puedes seguir trabajando y Duo volverá a intentarlo.',
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: actualizaciones.comprobando
+              ? null
+              : actualizaciones.comprueba,
+          child: const Text('Comprobar ahora'),
+        ),
+        if (actualizaciones.hayActualizacion)
+          FilledButton.icon(
+            onPressed: actualizaciones.instalando
+                ? null
+                : actualizaciones.instalar,
+            icon: actualizaciones.instalando
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.system_update_alt),
+            label: Text(
+              actualizaciones.instalando ? 'Preparando…' : 'Actualizar ahora',
+            ),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cerrar'),
+        ),
+      ],
     );
   }
 }

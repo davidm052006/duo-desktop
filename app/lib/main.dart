@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/auth/config_supabase.dart';
 import 'src/auth/puerta_auth.dart';
+import 'src/actualizaciones/estado_actualizacion.dart';
 import 'src/estado/estado_tablero.dart';
 import 'src/pantallas/fondo_video_config.dart';
 import 'src/pantallas/marco_app.dart';
@@ -40,8 +41,11 @@ class AppDuo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => EstadoTablero()..arranca(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => EstadoTablero()..arranca()),
+        ChangeNotifierProvider(create: (_) => EstadoActualizacion()..inicia()),
+      ],
       child: ValueListenableBuilder<double>(
         valueListenable: FondoVideoConfig.opacidadPaneles,
         builder: (context, opacidadPaneles, _) => MaterialApp(
