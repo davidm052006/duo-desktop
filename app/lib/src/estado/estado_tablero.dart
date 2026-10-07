@@ -148,6 +148,17 @@ class EstadoTablero extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Una instalación nueva puede tener el servicio local funcionando sin
+  /// haber configurado todavía una pizarra legacy de duo.
+  bool get sinProyectoLocal =>
+      tablero == null && fallo?.codigo == 'board_not_found';
+
+  /// board_not_found demuestra que el servicio respondió; no debe mostrarse
+  /// como una caída del proceso local.
+  bool get servicioLocalResponde =>
+      tablero != null ||
+      (fallo != null && fallo!.codigo != 'service_unreachable');
+
   bool get obsoleto => tablero != null && fallo != null;
 
   @override
