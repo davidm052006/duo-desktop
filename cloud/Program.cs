@@ -13,6 +13,9 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (int.TryParse(Environment.GetEnvironmentVariable("PORT"), out var publicPort))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{publicPort}");
+
 var connectionString = builder.Configuration.GetConnectionString("DuoCloud")
     ?? throw new InvalidOperationException(
         "Falta ConnectionStrings:DuoCloud. No pongas credenciales en appsettings.json.");
@@ -36,6 +39,12 @@ builder.Services
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<DuoCloudDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();

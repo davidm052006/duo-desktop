@@ -97,7 +97,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Registrar PR'));
     await tester.pumpAndSettle();
-    expect(find.text('Confirmar merge'), findsOneWidget);
+    expect(find.text('Confirmar merge'), findsNothing);
+    expect(
+      find.textContaining('El merge no se confirma manualmente aquí'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('workspace conserva estructura embebida', (tester) async {

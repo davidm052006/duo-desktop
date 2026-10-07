@@ -15,6 +15,10 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  DUO_PUBLIC_SUPABASE_URL: https://qagjowkmgsbxygydjxgo.supabase.co
+  DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_YFBqMrSs3OsBCSS7IAsVHA_Q3PEtfQk
+  DUO_PUBLIC_CLOUD_URL: https://duo-cloud-api.onrender.com
 
 jobs:
   validate:
@@ -114,7 +118,11 @@ jobs:
 
       - name: Build Linux release
         working-directory: app
-        run: flutter build linux --release -v
+        run: |
+          flutter build linux --release -v \
+            --dart-define=SUPABASE_URL="$DUO_PUBLIC_SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=DUO_CLOUD_URL="$DUO_PUBLIC_CLOUD_URL"
 
       - name: Package Linux artifact
         id: package
@@ -283,7 +291,10 @@ jobs:
         working-directory: app
         shell: pwsh
         run: |
-          flutter build windows --release -v
+          flutter build windows --release -v `
+            --dart-define=SUPABASE_URL="$env:DUO_PUBLIC_SUPABASE_URL" `
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$env:DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" `
+            --dart-define=DUO_CLOUD_URL="$env:DUO_PUBLIC_CLOUD_URL"
 
       - name: Publish local service self-contained
         shell: pwsh

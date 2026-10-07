@@ -176,7 +176,7 @@ void main() {
 
     await _pinta(tester, estado);
 
-    expect(find.text('Duo está listo'), findsOneWidget);
+    expect(find.text('DUO ESTÁ LISTO'), findsOneWidget);
     expect(
       find.textContaining('Todavía no has vinculado un proyecto local'),
       findsOneWidget,
