@@ -23,8 +23,9 @@ class PanelFallo extends StatelessWidget {
       'La app y el servicio no comparten token. scripts/dev.fish genera uno y '
           'se lo pasa a los dos; arrancarlos por separado no funciona.',
     'board_not_found' =>
-      'No encuentro la pizarra. Prepara el repo con  duo init  — y si tienes '
-          'varios proyectos, indica cuál con DUO_P=<nombre>.',
+      'El servicio local está funcionando, pero este dispositivo todavía no '
+          'tiene un proyecto Duo local configurado. Abre Proyectos para '
+          'seleccionar un proyecto y vincular su repositorio.',
     'invalid_board' =>
       'La pizarra existe pero su formato no cuadra. Revisa .team/BOARD.md y '
           '.team/ledger.tsv en la rama team/board.',
