@@ -37,9 +37,10 @@ dpkg-deb -c dist/duo-desktop_X.Y.Z_amd64.deb
 
 El paquete instala una semilla de Duo en `/usr/lib/duo-desktop`, un launcher en
 `/usr/bin/duo-desktop`, el desktop entry en `/usr/share/applications` y el
-icono en `/usr/share/icons/hicolor/scalable/apps`. Al abrirlo desde el buscador
+icono PNG compartido con Windows en `/usr/share/icons/hicolor/512x512/apps`.
+Al abrirlo desde el buscador
 de aplicaciones, el launcher crea la instalación por usuario en
-`~/.local/share/DuoDesktop/install`, arranca juntos el servicio local y Flutter
+`~/.local/opt/DuoDesktop`, arranca juntos el servicio local y Flutter
 y desde ahí puede aplicar actualizaciones sin requerir `sudo`.
 
 ## Instalar
@@ -70,9 +71,9 @@ El launcher consulta `latest-linux.json` en GitHub Releases. Cada publicación
 desde `main` o por tag publica ese manifiesto y el payload
 `DuoDesktop-X.Y.Z-linux-x64-update.zip`. Si hay una versión nueva, la descarga,
 comprueba su SHA-256, la activa de forma atómica y conserva la versión anterior
-para volver atrás si la nueva no inicia. Los datos, perfiles CEF y registro del
-launcher se conservan en `~/.local/share/DuoDesktop`, fuera de las versiones
-instaladas.
+para volver atrás si la nueva no inicia. Los datos, perfiles CEF, descargas,
+staging y registro del launcher se conservan en `~/.local/share/DuoDesktop`,
+fuera de las versiones instaladas.
 
 No se debe ejecutar directamente `versions/*/app/duo_desktop`: así se omite el
 servicio local y el mecanismo de actualización.

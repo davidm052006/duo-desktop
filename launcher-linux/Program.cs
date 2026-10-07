@@ -13,109 +13,94 @@ namespace DuoLauncher.Linux;
 internal static class Program
 {
     private const string LauncherVersion = "1.0.0";
-    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     public static async Task<int> Main(string[] args)
     {
-        // A running app starts this mode after the user accepts an update. Give
-        // its original launcher time to release the service and executable.
-        if (args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase))
-            await Task.Delay(TimeSpan.FromMilliseconds(750));
-        var root = AppContext.BaseDirectory;
+        if (args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase)) await Task.Delay(750);
+        var installRoot = AppContext.BaseDirectory;
         var dataRoot = Path.Combine(Environment.GetEnvironmentVariable("XDG_DATA_HOME") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share"), "DuoDesktop");
         Directory.CreateDirectory(Path.Combine(dataRoot, "logs"));
         Directory.CreateDirectory(Path.Combine(dataRoot, "updates", "downloads"));
         Directory.CreateDirectory(Path.Combine(dataRoot, "updates", "staging"));
+        LauncherLog.Write(dataRoot, $"Launcher iniciado. Install root: {installRoot}; data root: {dataRoot}.");
+
+        await using var instance = await LauncherInstanceLock.TryAcquireAsync(Path.Combine(dataRoot, "updates", "launcher.lock"), TimeSpan.FromSeconds(5));
+        if (instance is null)
+        {
+            const string message = "Duo Desktop ya está iniciándose o actualizándose. Espera unos segundos e inténtalo de nuevo.";
+            LauncherLog.Write(dataRoot, message); Console.Error.WriteLine(message); return 0;
+        }
 
         try
         {
-            var config = Read<LauncherConfig>(Path.Combine(root, "launcher-config.json"));
-            var current = Read<CurrentRelease>(Path.Combine(root, "current.json"));
-            RequireVersion(current.Version);
-
+            var store = new LinuxReleaseStore(installRoot, dataRoot);
+            var config = store.ReadConfig();
+            var current = store.ReadCurrent();
+            Versioning.Require(current.Version);
+            LauncherLog.Write(dataRoot, $"Versión actual: {current.Version}.");
             if (config.CheckForUpdates)
             {
                 try
                 {
-                    var update = await GetLatestAsync(config);
-                    if (update is not null && IsNewerCompatible(update, current, config.Channel))
-                        current = await InstallAsync(root, dataRoot, current, update);
+                    using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                    var updater = new LinuxUpdater(http, store, dataRoot, LauncherVersion);
+                    updater.CleanupInterruptedDownloads();
+                    LauncherLog.Write(dataRoot, "Buscando release de Linux en GitHub.");
+                    var update = await updater.GetLatestAsync(config, CancellationToken.None);
+                    if (update is null) LauncherLog.Write(dataRoot, "La release no contiene latest-linux.json.");
+                    else if (Versioning.IsNewerCompatible(update, current, config.Channel, LauncherVersion))
+                    {
+                        LauncherLog.Write(dataRoot, $"Release detectada: versión remota {update.Version}; actualización necesaria.");
+                        current = await updater.InstallAsync(current, update, CancellationToken.None);
+                        LauncherLog.Write(dataRoot, $"current.json actualizado a {current.Version}; anterior: {current.PreviousVersion}.");
+                    }
+                    else LauncherLog.Write(dataRoot, $"Release detectada: versión remota {update.Version}; no se necesita actualización compatible.");
                 }
-                catch (Exception ex)
-                {
-                    Log(dataRoot, $"Update check skipped: {ex.Message}");
-                }
+                catch (Exception ex) { LauncherLog.Write(dataRoot, $"Update check skipped: {ex}"); }
             }
-
-            await RunWithRollbackAsync(root, dataRoot, current, config.DuoProject);
-            KeepCurrentAndPrevious(root);
+            await RunWithRollbackAsync(store, current, config.DuoProject);
+            store.KeepCurrentAndPrevious();
             return 0;
         }
-        catch (Exception ex)
-        {
-            Log(dataRoot, ex.ToString());
-            Console.Error.WriteLine($"Duo Desktop no pudo iniciarse: {ex.Message}");
-            return 1;
-        }
+        catch (Exception ex) { LauncherLog.Write(dataRoot, ex.ToString()); Console.Error.WriteLine($"Duo Desktop no pudo iniciarse: {ex.Message}"); return 1; }
     }
 
-    private static async Task<CurrentRelease> InstallAsync(string root, string dataRoot, CurrentRelease current, UpdateManifest update)
-    {
-        Console.WriteLine($"Actualizando Duo Desktop a {update.Version}…");
-        var archive = Path.Combine(dataRoot, "updates", "downloads", $"{update.Version}.zip.part");
-        await DownloadAsync(update.Url, archive);
-        await VerifySha256Async(archive, update.Sha256);
-        var staging = ExtractToStaging(dataRoot, archive, update.Version);
-        ActivateStagedVersion(root, update.Version, staging);
-        var activated = new CurrentRelease { Version = update.Version, PreviousVersion = current.Version };
-        WriteAtomically(Path.Combine(root, "current.json"), activated);
-        return activated;
-    }
-
-    private static async Task RunWithRollbackAsync(string root, string dataRoot, CurrentRelease current, string? duoProject)
+    private static async Task RunWithRollbackAsync(LinuxReleaseStore store, CurrentRelease current, string? duoProject)
     {
         try
         {
-            await RunVersionAsync(VersionDirectory(root, current.Version), dataRoot, duoProject, checkEarlyExit: true);
+            LauncherLog.Write(store.DataRoot, $"Iniciando versión {current.Version}.");
+            await RunVersionAsync(store.VersionDirectory(current.Version), store.DataRoot, duoProject, true);
         }
-        catch when (!string.IsNullOrWhiteSpace(current.PreviousVersion))
+        catch (Exception ex) when (!string.IsNullOrWhiteSpace(current.PreviousVersion))
         {
+            LauncherLog.Write(store.DataRoot, $"La versión {current.Version} falló al iniciar: {ex}. Realizando rollback a {current.PreviousVersion}.");
             var previous = new CurrentRelease { Version = current.PreviousVersion! };
-            WriteAtomically(Path.Combine(root, "current.json"), previous);
+            store.WriteCurrentAtomically(previous);
             Console.Error.WriteLine($"La versión {current.Version} no inició; se restauró {previous.Version}.");
-            await RunVersionAsync(VersionDirectory(root, previous.Version), dataRoot, duoProject, checkEarlyExit: false);
+            await RunVersionAsync(store.VersionDirectory(previous.Version), store.DataRoot, duoProject, false);
         }
     }
 
     private static async Task RunVersionAsync(string versionDirectory, string dataRoot, string? duoProject, bool checkEarlyExit)
     {
-        ValidatePayload(versionDirectory);
-        var port = GetLoopbackPort();
-        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        LinuxReleaseStore.ValidatePayload(versionDirectory);
+        var port = GetLoopbackPort(); var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         using var service = Start(Path.Combine(versionDirectory, "service", "DuoDesktop.Service"), $"--urls http://127.0.0.1:{port}", port, token, dataRoot, duoProject);
         try
         {
             await WaitForHealthAsync(port, service);
             using var app = Start(Path.Combine(versionDirectory, "app", "duo_desktop"), "", port, token, dataRoot, duoProject);
-            if (checkEarlyExit)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(3));
-                if (app.HasExited) throw new InvalidOperationException("La aplicación terminó inmediatamente.");
-            }
+            if (checkEarlyExit) { await Task.Delay(TimeSpan.FromSeconds(3)); if (app.HasExited) throw new InvalidOperationException("La aplicación terminó inmediatamente."); }
             await app.WaitForExitAsync();
         }
-        finally
-        {
-            if (!service.HasExited) service.Kill(entireProcessTree: true);
-        }
+        finally { if (!service.HasExited) service.Kill(entireProcessTree: true); }
     }
 
     private static Process Start(string executable, string arguments, int port, string token, string dataRoot, string? duoProject)
     {
         var info = new ProcessStartInfo(executable, arguments) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
-        info.Environment["DUO_SERVICE_PORT"] = port.ToString();
-        info.Environment["DUO_TOKEN"] = token;
-        info.Environment["DUO_DATA_DIR"] = dataRoot;
+        info.Environment["DUO_SERVICE_PORT"] = port.ToString(); info.Environment["DUO_TOKEN"] = token; info.Environment["DUO_DATA_DIR"] = dataRoot;
         info.Environment["DUO_LAUNCHER_PATH"] = Environment.ProcessPath ?? throw new InvalidOperationException("No se pudo determinar el lanzador.");
         info.Environment["DUO_VERSION"] = Directory.GetParent(Path.GetDirectoryName(executable)!)?.Name ?? "";
         if (!string.IsNullOrWhiteSpace(duoProject)) info.Environment["DUO_P"] = duoProject;
@@ -124,171 +109,204 @@ internal static class Program
 
     private static async Task WaitForHealthAsync(int port, Process service)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        var until = DateTime.UtcNow.AddSeconds(15);
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) }; var until = DateTime.UtcNow.AddSeconds(15);
         while (DateTime.UtcNow < until)
         {
             if (service.HasExited) throw new InvalidOperationException("El servicio de Duo terminó antes de estar listo.");
-            try { if ((await client.GetAsync($"http://127.0.0.1:{port}/health")).IsSuccessStatusCode) return; }
-            catch (HttpRequestException) { }
+            try { if ((await client.GetAsync($"http://127.0.0.1:{port}/health")).IsSuccessStatusCode) return; } catch (HttpRequestException) { }
             await Task.Delay(250);
         }
         throw new TimeoutException("El servicio de Duo no respondió en 15 segundos.");
     }
+    private static int GetLoopbackPort() { using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); return ((IPEndPoint)listener.LocalEndpoint).Port; }
+}
 
-    private static int GetLoopbackPort()
+[SupportedOSPlatform("linux")]
+internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, string dataRoot, string launcherVersion)
+{
+    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
+    private static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(7), DownloadHeaderTimeout = TimeSpan.FromSeconds(15), DownloadTimeout = TimeSpan.FromMinutes(15);
+    public async Task<UpdateManifest?> GetLatestAsync(LauncherConfig config, CancellationToken ct)
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
-
-    private static async Task<UpdateManifest?> GetLatestAsync(LauncherConfig config)
-    {
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("DuoLauncher", LauncherVersion));
-        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-        using var release = JsonDocument.Parse(await client.GetStringAsync($"https://api.github.com/repos/{config.ReleasesOwner}/{config.ReleasesRepository}/releases/latest"));
+        using var releaseResponse = await SendWithRetriesAsync($"https://api.github.com/repos/{config.ReleasesOwner}/{config.ReleasesRepository}/releases/latest", ManifestTimeout, ct);
+        using var release = JsonDocument.Parse(await releaseResponse.Content.ReadAsStreamAsync(ct));
         var asset = release.RootElement.GetProperty("assets").EnumerateArray().FirstOrDefault(a => a.GetProperty("name").GetString() == "latest-linux.json");
         if (asset.ValueKind == JsonValueKind.Undefined) return null;
         var url = asset.GetProperty("browser_download_url").GetString() ?? throw new InvalidDataException("latest-linux.json has no download URL.");
-        var manifest = JsonSerializer.Deserialize<UpdateManifest>(await client.GetStringAsync(url), Json) ?? throw new InvalidDataException("latest-linux.json is empty.");
-        ValidateManifest(manifest);
-        return manifest;
+        using var manifestResponse = await SendWithRetriesAsync(url, ManifestTimeout, ct);
+        var manifest = await JsonSerializer.DeserializeAsync<UpdateManifest>(await manifestResponse.Content.ReadAsStreamAsync(ct), Json, ct) ?? throw new InvalidDataException("latest-linux.json is empty.");
+        Versioning.ValidateManifest(manifest); return manifest;
     }
-
-    private static async Task DownloadAsync(string url, string output)
+    public async Task<CurrentRelease> InstallAsync(CurrentRelease current, UpdateManifest update, CancellationToken ct)
     {
-        using var client = new HttpClient();
-        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-        await using var input = await response.Content.ReadAsStreamAsync();
-        await using var file = new FileStream(output, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        await input.CopyToAsync(file);
+        Console.WriteLine($"Actualizando Duo Desktop a {update.Version}…");
+        var archive = await DownloadVerifiedAsync(update, ct);
+        LauncherLog.Write(dataRoot, $"Extrayendo actualización {update.Version}."); var staging = store.ExtractToStaging(archive, update.Version);
+        LauncherLog.Write(dataRoot, $"Activando versión {update.Version}."); store.ActivateStagedVersion(update.Version, staging);
+        var activated = new CurrentRelease { Version = update.Version, PreviousVersion = current.Version }; store.WriteCurrentAtomically(activated); return activated;
     }
-
-    private static async Task VerifySha256Async(string file, string expected)
+    public async Task<string> DownloadVerifiedAsync(UpdateManifest update, CancellationToken ct)
     {
-        if (expected.Length != 64 || !expected.All(Uri.IsHexDigit)) throw new InvalidDataException("El manifiesto contiene un SHA-256 inválido.");
-        await using var input = File.OpenRead(file);
-        var actual = await SHA256.HashDataAsync(input);
+        var downloads = Path.Combine(dataRoot, "updates", "downloads"); Directory.CreateDirectory(downloads);
+        var destination = Path.Combine(downloads, $"{update.Version}.zip");
+        if (File.Exists(destination))
+        {
+            try { await VerifySha256Async(destination, update.Sha256, ct); LauncherLog.Write(dataRoot, $"Reutilizando ZIP verificado de {update.Version}."); return destination; }
+            catch (InvalidDataException) { LauncherLog.Write(dataRoot, $"El ZIP existente de {update.Version} es inválido; se descargará de nuevo."); File.Delete(destination); }
+        }
+        var temporary = Path.Combine(downloads, $".{update.Version}.{Guid.NewGuid():N}.zip.part");
+        try
+        {
+            LauncherLog.Write(dataRoot, $"Descargando actualización {update.Version}.");
+            using var response = await SendWithRetriesAsync(update.Url, DownloadHeaderTimeout, ct, HttpCompletionOption.ResponseHeadersRead);
+            await using var input = await response.Content.ReadAsStreamAsync(ct);
+            using var downloadCt = CancellationTokenSource.CreateLinkedTokenSource(ct); downloadCt.CancelAfter(DownloadTimeout);
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await input.CopyToAsync(output, 81920, downloadCt.Token);
+                await output.FlushAsync(downloadCt.Token);
+            }
+            await VerifySha256Async(temporary, update.Sha256, ct); File.Move(temporary, destination, true);
+            LauncherLog.Write(dataRoot, $"Descarga de {update.Version} completada y SHA-256 válido."); return destination;
+        }
+        catch { TryDelete(temporary); throw; }
+    }
+    public void CleanupInterruptedDownloads()
+    {
+        var downloads = Path.Combine(dataRoot, "updates", "downloads"); if (!Directory.Exists(downloads)) return;
+        foreach (var part in Directory.EnumerateFiles(downloads, "*.part"))
+            try { File.Delete(part); LauncherLog.Write(dataRoot, $"Se eliminó descarga parcial abandonada: {Path.GetFileName(part)}."); }
+            catch (IOException ex) { LauncherLog.Write(dataRoot, $"No se pudo limpiar descarga parcial {Path.GetFileName(part)}: {ex.Message}"); }
+    }
+    public static async Task VerifySha256Async(string file, string expected, CancellationToken ct)
+    {
+        if (!Versioning.IsSha256(expected)) throw new InvalidDataException("El manifiesto contiene un SHA-256 inválido.");
+        await using var input = File.OpenRead(file); var actual = await SHA256.HashDataAsync(input, ct);
         if (!CryptographicOperations.FixedTimeEquals(actual, Convert.FromHexString(expected))) throw new InvalidDataException("Actualización dañada o incompleta.");
     }
-
-    private static string ExtractToStaging(string dataRoot, string archivePath, string version)
+    private async Task<HttpResponseMessage> SendWithRetriesAsync(string url, TimeSpan timeout, CancellationToken ct, HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead)
     {
-        var root = Path.Combine(dataRoot, "updates", "staging", version);
-        if (Directory.Exists(root)) Directory.Delete(root, true);
-        Directory.CreateDirectory(root);
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url); request.Headers.UserAgent.Add(new ProductInfoHeaderValue("DuoLauncher", launcherVersion)); request.Headers.Accept.ParseAdd("application/vnd.github+json");
+                using var requestCt = CancellationTokenSource.CreateLinkedTokenSource(ct); requestCt.CancelAfter(timeout);
+                var response = await http.SendAsync(request, completion, requestCt.Token);
+                if (response.IsSuccessStatusCode) return response;
+                if (!IsTransient(response.StatusCode) || attempt == 2) { response.EnsureSuccessStatusCode(); }
+                last = new HttpRequestException($"HTTP {(int)response.StatusCode} ({response.ReasonPhrase})."); response.Dispose();
+            }
+            catch (Exception ex) when (IsTransient(ex, ct) && attempt < 2) { last = ex; }
+            if (attempt < 2) await Task.Delay(750, ct);
+        }
+        throw new HttpRequestException("No se pudo completar la solicitud después de reintentar.", last);
+    }
+    private static bool IsTransient(HttpStatusCode code) => code == HttpStatusCode.RequestTimeout || code == (HttpStatusCode)429 || (int)code >= 500;
+    private static bool IsTransient(Exception ex, CancellationToken external) =>
+        ex is HttpRequestException request && (request.StatusCode is null || IsTransient(request.StatusCode.Value)) ||
+        ex is IOException or TimeoutException ||
+        ex is OperationCanceledException && !external.IsCancellationRequested;
+    private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { } }
+}
+
+[SupportedOSPlatform("linux")]
+internal sealed class LinuxReleaseStore(string installRoot, string dataRoot)
+{
+    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
+    public string InstallRoot { get; } = installRoot; public string DataRoot { get; } = dataRoot; public string VersionsRoot => Path.Combine(InstallRoot, "versions"); public string CurrentPath => Path.Combine(InstallRoot, "current.json");
+    public LauncherConfig ReadConfig() => Read<LauncherConfig>(Path.Combine(InstallRoot, "launcher-config.json")); public CurrentRelease ReadCurrent() => Read<CurrentRelease>(CurrentPath); public string VersionDirectory(string version) => Path.Combine(VersionsRoot, version);
+    public void WriteCurrentAtomically(CurrentRelease release)
+    {
+        Directory.CreateDirectory(InstallRoot); var temporary = Path.Combine(InstallRoot, $".current.{Guid.NewGuid():N}.json.tmp");
+        try
+        {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough)) using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true })) { JsonSerializer.Serialize(writer, release, Json); writer.Flush(); stream.Flush(true); }
+            File.Move(temporary, CurrentPath, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+    public string ExtractToStaging(string archivePath, string version)
+    {
+        var root = Path.Combine(DataRoot, "updates", "staging", $"{version}-{Guid.NewGuid():N}"); Directory.CreateDirectory(root);
         try
         {
             using var archive = ZipFile.OpenRead(archivePath);
             foreach (var entry in archive.Entries)
             {
-                var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
-                if (!target.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new InvalidDataException("Ruta no segura en la actualización.");
+                var target = Path.GetFullPath(Path.Combine(root, entry.FullName)); if (!target.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new InvalidDataException("Ruta no segura en la actualización.");
                 if (string.IsNullOrEmpty(entry.Name)) { Directory.CreateDirectory(target); continue; }
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                entry.ExtractToFile(target, true);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!); entry.ExtractToFile(target, true);
             }
-            SetExecutable(Path.Combine(root, "app", "duo_desktop"));
-            SetExecutable(Path.Combine(root, "service", "DuoDesktop.Service"));
-            ValidatePayload(root);
-            return root;
+            SetExecutable(Path.Combine(root, "app", "duo_desktop")); SetExecutable(Path.Combine(root, "service", "DuoDesktop.Service")); ValidatePayload(root); return root;
         }
         catch { if (Directory.Exists(root)) Directory.Delete(root, true); throw; }
     }
-
-    private static void ActivateStagedVersion(string root, string version, string staging)
+    public void ActivateStagedVersion(string version, string staging)
     {
-        ValidatePayload(staging);
-        var versions = Path.Combine(root, "versions");
-        Directory.CreateDirectory(versions);
-        var pending = Path.Combine(versions, "." + version + ".installing");
-        if (Directory.Exists(pending)) Directory.Delete(pending, true);
-        Directory.Move(staging, pending);
-        var destination = VersionDirectory(root, version);
-        if (Directory.Exists(destination)) Directory.Delete(pending, true);
-        else Directory.Move(pending, destination);
+        ValidatePayload(staging); Directory.CreateDirectory(VersionsRoot); var pending = Path.Combine(VersionsRoot, $".{version}.{Guid.NewGuid():N}.installing"); Directory.Move(staging, pending);
+        try
+        {
+            ValidatePayload(pending);
+            var destination = VersionDirectory(version);
+            if (Directory.Exists(destination))
+            {
+                // A previous interrupted/manual install must never make us trust
+                // an incomplete version directory.
+                try { ValidatePayload(destination); Directory.Delete(pending, true); }
+                catch (InvalidDataException) { Directory.Delete(destination, true); Directory.Move(pending, destination); }
+            }
+            else Directory.Move(pending, destination);
+        }
+        catch { if (Directory.Exists(pending)) Directory.Delete(pending, true); throw; }
     }
-
-    private static void KeepCurrentAndPrevious(string root)
+    public void KeepCurrentAndPrevious()
     {
-        var current = Read<CurrentRelease>(Path.Combine(root, "current.json"));
-        var keep = new HashSet<string>(StringComparer.Ordinal) { current.Version };
-        if (!string.IsNullOrWhiteSpace(current.PreviousVersion)) keep.Add(current.PreviousVersion);
-        var versions = Path.Combine(root, "versions");
-        if (!Directory.Exists(versions)) return;
-        foreach (var directory in Directory.EnumerateDirectories(versions))
-            if (!keep.Contains(Path.GetFileName(directory))) Directory.Delete(directory, true);
+        var current = ReadCurrent(); var keep = new HashSet<string>(StringComparer.Ordinal) { current.Version }; if (!string.IsNullOrWhiteSpace(current.PreviousVersion)) keep.Add(current.PreviousVersion);
+        if (!Directory.Exists(VersionsRoot)) return; foreach (var directory in Directory.EnumerateDirectories(VersionsRoot)) if (!keep.Contains(Path.GetFileName(directory)) && !Path.GetFileName(directory).StartsWith('.')) Directory.Delete(directory, true);
     }
-
-    private static void ValidatePayload(string directory)
-    {
-        foreach (var path in new[] { Path.Combine("app", "duo_desktop"), Path.Combine("app", "lib", "libflutter_linux_gtk.so"), Path.Combine("service", "DuoDesktop.Service") })
-            if (!File.Exists(Path.Combine(directory, path))) throw new InvalidDataException($"Payload incompleto: {path}");
-    }
-
-    private static bool IsNewerCompatible(UpdateManifest update, CurrentRelease current, string channel) =>
-        string.Equals(update.Channel, channel, StringComparison.OrdinalIgnoreCase) &&
-        CompareVersions(update.Version, current.Version) > 0 && CompareVersions(update.MinimumLauncherVersion, LauncherVersion) <= 0;
-
-    private static int CompareVersions(string left, string right)
-    {
-        RequireVersion(left); RequireVersion(right);
-        return Version.Parse(left).CompareTo(Version.Parse(right));
-    }
-
-    private static void RequireVersion(string value)
-    {
-        if (!Version.TryParse(value, out var version) || version.Revision >= 0) throw new InvalidDataException($"Versión inválida: {value}");
-    }
-
-    private static void ValidateManifest(UpdateManifest manifest)
-    {
-        RequireVersion(manifest.Version); RequireVersion(manifest.MinimumLauncherVersion);
-        if (!Uri.TryCreate(manifest.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps) throw new InvalidDataException("La URL de actualización debe usar HTTPS.");
-        if (manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException("El manifiesto contiene un SHA-256 inválido.");
-    }
-
-    private static string VersionDirectory(string root, string version) => Path.Combine(root, "versions", version);
+    public static void ValidatePayload(string directory) { foreach (var path in new[] { Path.Combine("app", "duo_desktop"), Path.Combine("app", "lib", "libflutter_linux_gtk.so"), Path.Combine("service", "DuoDesktop.Service") }) if (!File.Exists(Path.Combine(directory, path))) throw new InvalidDataException($"Payload incompleto: {path}"); }
     private static T Read<T>(string path) => JsonSerializer.Deserialize<T>(File.ReadAllText(path), Json) ?? throw new InvalidDataException($"Archivo vacío: {path}");
-    private static void WriteAtomically<T>(string path, T value)
+    private static void SetExecutable(string path) { if (File.Exists(path)) File.SetUnixFileMode(path, File.GetUnixFileMode(path) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute); }
+}
+
+[SupportedOSPlatform("linux")]
+internal sealed class LauncherInstanceLock : IAsyncDisposable
+{
+    private readonly FileStream _stream; private LauncherInstanceLock(FileStream stream) => _stream = stream;
+    public static async Task<LauncherInstanceLock?> TryAcquireAsync(string path, TimeSpan wait)
     {
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(value, Json));
-        File.Move(temp, path, true);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!); var deadline = DateTime.UtcNow + wait;
+        while (true)
+        {
+            FileStream? stream = null;
+            try
+            {
+                stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                stream.Lock(0, 1);
+                return new LauncherInstanceLock(stream);
+            }
+            catch (IOException)
+            {
+                stream?.Dispose();
+                if (DateTime.UtcNow >= deadline) return null;
+                await Task.Delay(200);
+            }
+        }
     }
-    private static void SetExecutable(string path)
-    {
-        if (!File.Exists(path)) return;
-        var mode = File.GetUnixFileMode(path);
-        File.SetUnixFileMode(path, mode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
-    }
-    private static void Log(string dataRoot, string message) => File.AppendAllText(Path.Combine(dataRoot, "logs", "launcher.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+    public ValueTask DisposeAsync() { try { _stream.Unlock(0, 1); } catch (IOException) { } _stream.Dispose(); return ValueTask.CompletedTask; }
 }
 
-internal sealed class LauncherConfig
+internal static class Versioning
 {
-    public string Channel { get; init; } = "beta";
-    public bool CheckForUpdates { get; init; } = true;
-    public string ReleasesOwner { get; init; } = "davidm052006";
-    public string ReleasesRepository { get; init; } = "duo-desktop";
-    public string? DuoProject { get; init; }
+    public static bool IsNewerCompatible(UpdateManifest update, CurrentRelease current, string channel, string launcherVersion) => string.Equals(update.Channel, channel, StringComparison.OrdinalIgnoreCase) && Compare(update.Version, current.Version) > 0 && Compare(update.MinimumLauncherVersion, launcherVersion) <= 0;
+    public static int Compare(string left, string right) { Require(left); Require(right); return Version.Parse(left).CompareTo(Version.Parse(right)); }
+    public static void Require(string value) { if (!Version.TryParse(value, out var version) || version.Revision >= 0) throw new InvalidDataException($"Versión inválida: {value}"); }
+    public static bool IsSha256(string value) => value.Length == 64 && value.All(Uri.IsHexDigit);
+    public static void ValidateManifest(UpdateManifest manifest) { Require(manifest.Version); Require(manifest.MinimumLauncherVersion); if (!Uri.TryCreate(manifest.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps) throw new InvalidDataException("La URL de actualización debe usar HTTPS."); if (!IsSha256(manifest.Sha256)) throw new InvalidDataException("El manifiesto contiene un SHA-256 inválido."); }
 }
-
-internal sealed class CurrentRelease
-{
-    public string Version { get; init; } = "";
-    public string? PreviousVersion { get; init; }
-}
-
-internal sealed class UpdateManifest
-{
-    public string Version { get; init; } = "";
-    public string Channel { get; init; } = "";
-    public string Url { get; init; } = "";
-    public string Sha256 { get; init; } = "";
-    public string MinimumLauncherVersion { get; init; } = "1.0.0";
-    public bool Mandatory { get; init; }
-}
+internal static class LauncherLog { public static void Write(string dataRoot, string message) { try { File.AppendAllText(Path.Combine(dataRoot, "logs", "launcher.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}"); } catch { } } }
+internal sealed class LauncherConfig { public string Channel { get; init; } = "beta"; public bool CheckForUpdates { get; init; } = true; public string ReleasesOwner { get; init; } = "davidm052006"; public string ReleasesRepository { get; init; } = "duo-desktop"; public string? DuoProject { get; init; } }
+internal sealed class CurrentRelease { public string Version { get; init; } = ""; public string? PreviousVersion { get; init; } }
+internal sealed class UpdateManifest { public string Version { get; init; } = ""; public string Channel { get; init; } = ""; public string Url { get; init; } = ""; public string Sha256 { get; init; } = ""; public string MinimumLauncherVersion { get; init; } = "1.0.0"; public bool Mandatory { get; init; } }

@@ -97,7 +97,7 @@ mkdir -p \
   "$PACKAGE_ROOT/usr/bin" \
   "$PACKAGE_ROOT/usr/lib/duo-desktop" \
   "$PACKAGE_ROOT/usr/share/applications" \
-  "$PACKAGE_ROOT/usr/share/icons/hicolor/scalable/apps" \
+  "$PACKAGE_ROOT/usr/share/icons/hicolor/512x512/apps" \
   "$DIST_DIR"
 chmod g-s "$PACKAGE_ROOT/DEBIAN"
 chmod 0755 "$PACKAGE_ROOT/DEBIAN"
@@ -122,9 +122,9 @@ cat > "$PACKAGE_ROOT/usr/bin/duo-desktop" <<'LAUNCHER'
 #!/usr/bin/env bash
 set -e
 # /usr is read-only for normal users, so seed a per-user install once and run
-# it there. Subsequent launches can atomically install GitHub updates.
-data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
-install_root="$data_home/DuoDesktop/install"
+# it from ~/.local/opt. Versions stay separate from state, logs and downloads
+# in ~/.local/share/DuoDesktop, which is where DuoLauncher keeps update data.
+install_root="$HOME/.local/opt/DuoDesktop"
 seed="/usr/lib/duo-desktop/seed"
 mkdir -p "$install_root"
 if [[ ! -f "$install_root/current.json" ]]; then
@@ -143,8 +143,10 @@ chmod 0755 "$PACKAGE_ROOT/usr/bin/duo-desktop"
 
 install -m 0644 "$PACKAGING_DIR/duo-desktop.desktop" \
   "$PACKAGE_ROOT/usr/share/applications/duo-desktop.desktop"
-install -m 0644 "$PACKAGING_DIR/icons/duo-desktop.svg" \
-  "$PACKAGE_ROOT/usr/share/icons/hicolor/scalable/apps/duo-desktop.svg"
+# Keep the Linux launcher icon identical to the logo shipped by the Windows
+# installer.  The desktop entry uses the shared `duo-desktop` icon name.
+install -m 0644 "$APP_ROOT/../installer/windows/duo-logo.png" \
+  "$PACKAGE_ROOT/usr/share/icons/hicolor/512x512/apps/duo-desktop.png"
 
 chmod 4755 "$SEED/versions/$VERSION/app/lib/chrome-sandbox"
 
