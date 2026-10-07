@@ -431,6 +431,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && success()
 
     steps:
+      - name: Verify Duo Cloud health
+        run: |
+          curl --fail --silent --show-error \
+            --retry 5 --retry-delay 5 --retry-all-errors \
+            "$DUO_PUBLIC_CLOUD_URL/health"
+
       - name: Download DuoLauncher update
         uses: actions/download-artifact@v4
         with:
