@@ -18,7 +18,7 @@ permissions:
 env:
   DUO_PUBLIC_SUPABASE_URL: https://qagjowkmgsbxygydjxgo.supabase.co
   DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_YFBqMrSs3OsBCSS7IAsVHA_Q3PEtfQk
-  DUO_PUBLIC_CLOUD_URL: https://duo-cloud-api.onrender.com
+  DUO_PUBLIC_CLOUD_URL: https://duo-cloud-api-uz49.onrender.com
 
 jobs:
   validate:
