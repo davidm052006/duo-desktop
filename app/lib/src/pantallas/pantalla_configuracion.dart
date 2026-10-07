@@ -191,7 +191,7 @@ class _ServicioLocal extends StatelessWidget {
   Widget build(BuildContext context) {
     final paleta = context.paleta;
     final config = ConfigDuo.desdeEntorno;
-    final conectado = estado.tablero != null && !estado.obsoleto;
+    final conectado = estado.servicioLocalResponde;
     final tono = conectado ? paleta.bien : paleta.aviso;
 
     return Tarjeta(
@@ -224,7 +224,9 @@ class _ServicioLocal extends StatelessWidget {
                 Expanded(
                   child: Text(
                     conectado
-                        ? 'El servicio local está respondiendo.'
+                        ? (estado.sinProyectoLocal
+                            ? 'El servicio local está respondiendo. Falta vincular un proyecto local.'
+                            : 'El servicio local está respondiendo.')
                         : estado.fallo?.mensaje ?? 'Esperando respuesta del servicio local.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
