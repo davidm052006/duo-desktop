@@ -230,21 +230,42 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                     ),
                     VerticalDivider(width: 1, color: paleta.rejilla),
                     Expanded(
-                      child: switch (destinos[_activo].nombre) {
-                        'Proyectos' => const PantallaProyectos(),
-                        'Tablero' => const PantallaTablero(),
-                        'Tareas' => const PantallaTareas(),
-                        'Agentes' => const PantallaAgentes(),
-                        'Chats' => const PantallaChats(),
-                        'Preguntas' => const PantallaPreguntas(),
-                        'Terminal' => const PantallaTerminal(),
-                        'GitHub' => const PantallaGitHub(),
-                        'Historial' => const PantallaHistorial(),
-                        'Visualizaciones' => const PantallaVisualizaciones(),
-                        'Personalización' => const PantallaPersonalizacion(),
-                        'Configuración' => const PantallaConfiguracion(),
-                        _ => const PantallaInicio(),
-                      },
+                      child: Builder(
+                        builder: (context) {
+                          final estado = context.watch<EstadoTablero>();
+                          final nombre = destinos[_activo].nombre;
+                          final libreDeBoard = nombre == 'Proyectos' ||
+                              nombre == 'Chats' ||
+                              nombre == 'Personalización' ||
+                              nombre == 'Configuración';
+
+                          if (estado.sinProyectoLocal && !libreDeBoard) {
+                            return _ProyectoLocalPendiente(
+                              irAProyectos: () => setState(
+                                () => _activo = destinos.indexWhere(
+                                  (d) => d.nombre == 'Proyectos',
+                                ),
+                              ),
+                            );
+                          }
+
+                          return switch (nombre) {
+                            'Proyectos' => const PantallaProyectos(),
+                            'Tablero' => const PantallaTablero(),
+                            'Tareas' => const PantallaTareas(),
+                            'Agentes' => const PantallaAgentes(),
+                            'Chats' => const PantallaChats(),
+                            'Preguntas' => const PantallaPreguntas(),
+                            'Terminal' => const PantallaTerminal(),
+                            'GitHub' => const PantallaGitHub(),
+                            'Historial' => const PantallaHistorial(),
+                            'Visualizaciones' => const PantallaVisualizaciones(),
+                            'Personalización' => const PantallaPersonalizacion(),
+                            'Configuración' => const PantallaConfiguracion(),
+                            _ => const PantallaInicio(),
+                          };
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -349,7 +370,10 @@ class _BarraMarca extends StatelessWidget {
               ),
               const SizedBox(width: 12),
             ],
-            _Conexion(conectado: estado.tablero != null && !estado.obsoleto),
+            _Conexion(
+              conectado: estado.servicioLocalResponde,
+              proyectoPendiente: estado.sinProyectoLocal,
+            ),
             const SizedBox(width: 12),
             const Row(
               children: [
@@ -492,9 +516,13 @@ class _DialogoNotificaciones extends StatelessWidget {
 }
 
 class _Conexion extends StatelessWidget {
-  const _Conexion({required this.conectado});
+  const _Conexion({
+    required this.conectado,
+    required this.proyectoPendiente,
+  });
 
   final bool conectado;
+  final bool proyectoPendiente;
 
   @override
   Widget build(BuildContext context) {
@@ -509,12 +537,64 @@ class _Conexion extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          conectado
-              ? 'Servicio local conectado'
-              : 'Servicio local sin responder',
+          !conectado
+              ? 'Servicio local sin responder'
+              : proyectoPendiente
+                  ? 'Servicio conectado · configura un proyecto'
+                  : 'Servicio local conectado',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
+    );
+  }
+}
+
+class _ProyectoLocalPendiente extends StatelessWidget {
+  const _ProyectoLocalPendiente({required this.irAProyectos});
+
+  final VoidCallback irAProyectos;
+
+  @override
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    final textos = Theme.of(context).textTheme;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Tarjeta(
+            titulo: 'Duo está listo',
+            icono: Icons.rocket_launch_outlined,
+            sufijo: Insignia('configuración inicial', tono: paleta.acentoAlt),
+            hijo: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Todavía no has vinculado un proyecto local en este dispositivo.',
+                  style: textos.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'El servicio local está funcionando. Abre Proyectos, selecciona '
+                  'tu proyecto y configura el repositorio local para habilitar '
+                  'Tablero, Tareas, Agentes, GitHub e Historial.',
+                  style: textos.bodyMedium?.copyWith(
+                    color: paleta.tintaSecundaria,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: irAProyectos,
+                  icon: const Icon(Icons.account_tree_outlined),
+                  label: const Text('Ir a Proyectos'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
