@@ -254,6 +254,30 @@ void main() {
     expect(find.text('duo-desktop'), findsNothing);
   });
 
+  testWidgets('board_not_found mantiene el servicio como conectado', (tester) async {
+    await _pinta(
+      tester,
+      await _estadoCon(
+        jsonEncode({
+          'error': {
+            'code': 'board_not_found',
+            'message': 'No se encontró una pizarra de duo en el proyecto activo.',
+          },
+        }),
+        codigo: 404,
+      ),
+    );
+
+    expect(find.text('conectado'), findsOneWidget);
+    expect(
+      find.text(
+        'El servicio local está respondiendo. Falta vincular un proyecto local.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('sin respuesta'), findsNothing);
+  });
+
   testWidgets('un tablero sin proyecto no se confunde con un servicio caído', (tester) async {
     await _pinta(
       tester,

@@ -156,8 +156,7 @@ class EstadoTablero extends ChangeNotifier {
   /// board_not_found demuestra que el servicio respondió; no debe mostrarse
   /// como una caída del proceso local.
   bool get servicioLocalResponde =>
-      tablero != null ||
-      (fallo != null && fallo!.codigo != 'service_unreachable');
+      tablero != null || fallo?.codigo == 'board_not_found';
 
   bool get obsoleto => tablero != null && fallo != null;
 

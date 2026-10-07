@@ -160,6 +160,35 @@ void main() {
     expect(find.text('Servicio local sin responder'), findsOneWidget);
   });
 
+  testWidgets('board_not_found se convierte en configuración inicial', (tester) async {
+    final estado = await _estadoCon(
+      jsonEncode({
+        'error': {
+          'code': 'board_not_found',
+          'message': 'No se encontró una pizarra de duo en el proyecto activo.',
+        },
+      }),
+      codigo: 404,
+    );
+
+    expect(estado.sinProyectoLocal, isTrue);
+    expect(estado.servicioLocalResponde, isTrue);
+
+    await _pinta(tester, estado);
+
+    expect(find.text('Duo está listo'), findsOneWidget);
+    expect(
+      find.textContaining('Todavía no has vinculado un proyecto local'),
+      findsOneWidget,
+    );
+    expect(find.text('Ir a Proyectos'), findsOneWidget);
+    expect(find.text('board_not_found'), findsNothing);
+    expect(
+      find.text('Servicio conectado · configura un proyecto'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('un tablero vacío se muestra a cero, sin inventar carga', (tester) async {
     await _pinta(
       tester,

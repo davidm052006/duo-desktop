@@ -17,6 +17,44 @@ permissions:
 
 
 jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze Flutter
+        working-directory: app
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test Flutter
+        working-directory: app
+        run: flutter test
+
+      - name: Test local service
+        run: dotnet test service/tests/DuoDesktop.Service.Tests.csproj --configuration Release
+
+      - name: Test cloud backend
+        run: dotnet test cloud/tests/DuoDesktop.Cloud.Tests.csproj --configuration Release
+
   linux:
     name: Build Linux
     runs-on: ubuntu-24.04
@@ -377,7 +415,7 @@ jobs:
 
   publish-windows-update:
     name: Publish desktop launcher updates
-    needs: [linux, windows]
+    needs: [validate, linux, windows]
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && success()
 
@@ -417,7 +455,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [linux, windows]
+    needs: [validate, linux, windows]
     runs-on: ubuntu-24.04
     if: startsWith(github.ref, 'refs/tags/') && success()
 
