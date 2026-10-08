@@ -31,6 +31,7 @@ internal static class Program
             LauncherLog.Write(dataRoot, message); Console.Error.WriteLine(message); return 0;
         }
 
+        using var progress = DesktopProgress.Create(dataRoot);
         try
         {
             var store = new LinuxReleaseStore(installRoot, dataRoot);
@@ -43,21 +44,25 @@ internal static class Program
                 try
                 {
                     using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-                    var updater = new LinuxUpdater(http, store, dataRoot, LauncherVersion);
+                    var updater = new LinuxUpdater(http, store, dataRoot, LauncherVersion, progress);
                     updater.CleanupInterruptedDownloads();
+                    progress.Report(new ProgressInfo(3, "Buscando actualizaciones…"));
                     LauncherLog.Write(dataRoot, "Buscando release de Linux en GitHub.");
                     var update = await updater.GetLatestAsync(config, CancellationToken.None);
                     if (update is null) LauncherLog.Write(dataRoot, "La release no contiene latest-linux.json.");
                     else if (Versioning.IsNewerCompatible(update, current, config.Channel, LauncherVersion))
                     {
+                        progress.Report(new ProgressInfo(7, "Actualización disponible", $"Instalando versión {update.Version}."));
                         LauncherLog.Write(dataRoot, $"Release detectada: versión remota {update.Version}; actualización necesaria.");
                         current = await updater.InstallAsync(current, update, CancellationToken.None);
                         LauncherLog.Write(dataRoot, $"current.json actualizado a {current.Version}; anterior: {current.PreviousVersion}.");
                     }
-                    else LauncherLog.Write(dataRoot, $"Release detectada: versión remota {update.Version}; no se necesita actualización compatible.");
+                    else { LauncherLog.Write(dataRoot, $"Release detectada: versión remota {update.Version}; no se necesita actualización compatible."); progress.Report(new ProgressInfo(100, "Duo Desktop está actualizado.")); }
                 }
-                catch (Exception ex) { LauncherLog.Write(dataRoot, $"Update check skipped: {ex}"); }
+                catch (Exception ex) { LauncherLog.Write(dataRoot, $"Update check skipped: {ex}"); progress.Report(new ProgressInfo(100, "Iniciando versión instalada…", "No se pudo buscar actualización.")); }
             }
+            progress.Report(new ProgressInfo(100, "Iniciando Duo Desktop…"));
+            progress.Close();
             await RunWithRollbackAsync(store, current, config.DuoProject);
             store.KeepCurrentAndPrevious();
             return 0;
@@ -122,7 +127,7 @@ internal static class Program
 }
 
 [SupportedOSPlatform("linux")]
-internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, string dataRoot, string launcherVersion)
+internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, string dataRoot, string launcherVersion, IProgress<ProgressInfo>? progress = null)
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
     private static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(7), DownloadHeaderTimeout = TimeSpan.FromSeconds(15), DownloadTimeout = TimeSpan.FromMinutes(15);
@@ -140,9 +145,13 @@ internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, str
     public async Task<CurrentRelease> InstallAsync(CurrentRelease current, UpdateManifest update, CancellationToken ct)
     {
         Console.WriteLine($"Actualizando Duo Desktop a {update.Version}…");
+        progress?.Report(new ProgressInfo(8, "Preparando descarga…"));
         var archive = await DownloadVerifiedAsync(update, ct);
-        LauncherLog.Write(dataRoot, $"Extrayendo actualización {update.Version}."); var staging = store.ExtractToStaging(archive, update.Version);
-        LauncherLog.Write(dataRoot, $"Activando versión {update.Version}."); store.ActivateStagedVersion(update.Version, staging);
+        progress?.Report(new ProgressInfo(72, "Verificando…", "Verificando SHA-256…"));
+        // DownloadVerifiedAsync already verified the temporary archive before promotion.
+        LauncherLog.Write(dataRoot, $"Extrayendo actualización {update.Version}."); progress?.Report(new ProgressInfo(82, "Extrayendo actualización…")); var staging = store.ExtractToStaging(archive, update.Version);
+        store.UpdateLauncherFromStaging(staging);
+        LauncherLog.Write(dataRoot, $"Activando versión {update.Version}."); progress?.Report(new ProgressInfo(92, "Instalando actualización…")); store.ActivateStagedVersion(update.Version, staging);
         var activated = new CurrentRelease { Version = update.Version, PreviousVersion = current.Version }; store.WriteCurrentAtomically(activated); return activated;
     }
     public async Task<string> DownloadVerifiedAsync(UpdateManifest update, CancellationToken ct)
@@ -163,7 +172,15 @@ internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, str
             using var downloadCt = CancellationTokenSource.CreateLinkedTokenSource(ct); downloadCt.CancelAfter(DownloadTimeout);
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await input.CopyToAsync(output, 81920, downloadCt.Token);
+                var total = response.Content.Headers.ContentLength;
+                var buffer = new byte[81920]; long copied = 0; int read;
+                while ((read = await input.ReadAsync(buffer, downloadCt.Token)) != 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, read), downloadCt.Token);
+                    copied += read;
+                    var percent = total is > 0 ? 10 + (int)Math.Min(60, copied * 60 / total.Value) : 10;
+                    progress?.Report(new ProgressInfo(percent, "Descargando actualización…", total is > 0 ? $"{FormatMegabytes(copied)} / {FormatMegabytes(total.Value)}" : FormatMegabytes(copied)));
+                }
                 await output.FlushAsync(downloadCt.Token);
             }
             await VerifySha256Async(temporary, update.Sha256, ct); File.Move(temporary, destination, true);
@@ -209,6 +226,7 @@ internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, str
         ex is IOException or TimeoutException ||
         ex is OperationCanceledException && !external.IsCancellationRequested;
     private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { } }
+    private static string FormatMegabytes(long bytes) => $"{bytes / 1024d / 1024d:0.0} MB";
 }
 
 [SupportedOSPlatform("linux")]
@@ -261,6 +279,22 @@ internal sealed class LinuxReleaseStore(string installRoot, string dataRoot)
         }
         catch { if (Directory.Exists(pending)) Directory.Delete(pending, true); throw; }
     }
+    public void UpdateLauncherFromStaging(string staging)
+    {
+        var candidate = Path.Combine(staging, "launcher", "DuoLauncher");
+        if (!File.Exists(candidate)) return; // Older release archives remain compatible.
+        if (new FileInfo(candidate).Length == 0) throw new InvalidDataException("El launcher incluido en la actualización está vacío.");
+        var temporary = Path.Combine(InstallRoot, $".DuoLauncher.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.Copy(candidate, temporary, overwrite: false);
+            SetExecutable(temporary);
+            File.Move(temporary, Path.Combine(InstallRoot, "DuoLauncher"), overwrite: true);
+            Directory.Delete(Path.Combine(staging, "launcher"), true);
+            LauncherLog.Write(DataRoot, "Launcher Linux actualizado junto con el payload.");
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
     public void KeepCurrentAndPrevious()
     {
         var current = ReadCurrent(); var keep = new HashSet<string>(StringComparer.Ordinal) { current.Version }; if (!string.IsNullOrWhiteSpace(current.PreviousVersion)) keep.Add(current.PreviousVersion);
@@ -307,6 +341,98 @@ internal static class Versioning
     public static void ValidateManifest(UpdateManifest manifest) { Require(manifest.Version); Require(manifest.MinimumLauncherVersion); if (!Uri.TryCreate(manifest.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps) throw new InvalidDataException("La URL de actualización debe usar HTTPS."); if (!IsSha256(manifest.Sha256)) throw new InvalidDataException("El manifiesto contiene un SHA-256 inválido."); }
 }
 internal static class LauncherLog { public static void Write(string dataRoot, string message) { try { File.AppendAllText(Path.Combine(dataRoot, "logs", "launcher.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}"); } catch { } } }
+internal sealed record ProgressInfo(int Percent, string Stage, string? Detail = null);
+
+// The launcher must remain usable on every supported Linux desktop. Zenity is
+// the most portable GTK implementation; KDialog covers KDE installations.
+// Both are optional: a missing/failed dialog only falls back to launcher.log.
+internal sealed class DesktopProgress : IProgress<ProgressInfo>, IDisposable
+{
+    private readonly string _dataRoot;
+    private readonly Process? _dialog;
+    private readonly StreamWriter? _zenityInput;
+    private readonly Task<string?>? _kdialogReference;
+    private string? _reference;
+    private bool _closed;
+
+    private DesktopProgress(string dataRoot)
+    {
+        _dataRoot = dataRoot;
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"))) return;
+        try
+        {
+            if (FindExecutable("zenity") is { } zenity)
+            {
+                var info = new ProcessStartInfo(zenity) { UseShellExecute = false, RedirectStandardInput = true };
+                info.ArgumentList.Add("--progress"); info.ArgumentList.Add("--title=Duo Desktop"); info.ArgumentList.Add("--text=Preparando Duo Desktop…"); info.ArgumentList.Add("--percentage=0"); info.ArgumentList.Add("--auto-close"); info.ArgumentList.Add("--no-cancel");
+                _dialog = Process.Start(info); _zenityInput = _dialog?.StandardInput;
+            }
+            else if (FindExecutable("kdialog") is { } kdialog && FindExecutable("qdbus6") is { })
+            {
+                var info = new ProcessStartInfo(kdialog) { UseShellExecute = false, RedirectStandardOutput = true };
+                info.ArgumentList.Add("--title"); info.ArgumentList.Add("Duo Desktop"); info.ArgumentList.Add("--progressbar"); info.ArgumentList.Add("Preparando Duo Desktop…"); info.ArgumentList.Add("100");
+                _dialog = Process.Start(info);
+                if (_dialog is not null) _kdialogReference = _dialog.StandardOutput.ReadLineAsync();
+            }
+        }
+        catch (Exception ex) { LauncherLog.Write(dataRoot, $"No se pudo mostrar progreso gráfico: {ex.Message}"); }
+    }
+
+    public static DesktopProgress Create(string dataRoot) => new(dataRoot);
+    public void Report(ProgressInfo progress)
+    {
+        if (_closed) return;
+        try
+        {
+            var percent = Math.Clamp(progress.Percent, 0, 100);
+            if (_zenityInput is not null)
+            {
+                _zenityInput.WriteLine(percent);
+                _zenityInput.WriteLine($"# {progress.Stage}{(string.IsNullOrWhiteSpace(progress.Detail) ? "" : $"\n{progress.Detail}")}");
+                _zenityInput.Flush();
+                return;
+            }
+            if (_kdialogReference is { IsCompletedSuccessfully: true } && _reference is null) _reference = _kdialogReference.Result;
+            if (!string.IsNullOrWhiteSpace(_reference))
+            {
+                var parts = _reference.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    RunQdbus(parts[0], parts[1], "setValue", percent.ToString());
+                    RunQdbus(parts[0], parts[1], "setLabelText", progress.Stage);
+                }
+            }
+        }
+        catch (Exception ex) { LauncherLog.Write(_dataRoot, $"No se pudo actualizar progreso gráfico: {ex.Message}"); }
+    }
+
+    public void Close()
+    {
+        if (_closed) return;
+        _closed = true;
+        try
+        {
+            if (_zenityInput is not null) { _zenityInput.Dispose(); return; }
+            if (_kdialogReference is { IsCompletedSuccessfully: true })
+            {
+                _reference ??= _kdialogReference.Result;
+                var parts = _reference?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts?.Length >= 2) RunQdbus(parts[0], parts[1], "close");
+            }
+        }
+        catch (Exception ex) { LauncherLog.Write(_dataRoot, $"No se pudo cerrar progreso gráfico: {ex.Message}"); }
+    }
+
+    public void Dispose() { Close(); _dialog?.Dispose(); }
+    private static string? FindExecutable(string name) => Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator).Select(path => Path.Combine(path, name)).FirstOrDefault(File.Exists);
+    private static void RunQdbus(string service, string path, string method, params string[] args)
+    {
+        var executable = FindExecutable("qdbus6"); if (executable is null) return;
+        var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
+        info.ArgumentList.Add(service); info.ArgumentList.Add(path); info.ArgumentList.Add(method); foreach (var arg in args) info.ArgumentList.Add(arg);
+        using var process = Process.Start(info); process?.WaitForExit(1000);
+    }
+}
 internal sealed class LauncherConfig { public string Channel { get; init; } = "beta"; public bool CheckForUpdates { get; init; } = true; public string ReleasesOwner { get; init; } = "davidm052006"; public string ReleasesRepository { get; init; } = "duo-desktop"; public string? DuoProject { get; init; } }
 internal sealed class CurrentRelease { public string Version { get; init; } = ""; public string? PreviousVersion { get; init; } }
 internal sealed class UpdateManifest { public string Version { get; init; } = ""; public string Channel { get; init; } = ""; public string Url { get; init; } = ""; public string Sha256 { get; init; } = ""; public string MinimumLauncherVersion { get; init; } = "1.0.0"; public bool Mandatory { get; init; } }

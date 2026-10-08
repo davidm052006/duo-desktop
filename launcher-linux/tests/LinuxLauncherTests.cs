@@ -63,6 +63,18 @@ public sealed class LinuxLauncherTests : IDisposable
     }
 
     [Fact]
+    public void Staged_launcher_replaces_the_bootstrap_binary_atomically()
+    {
+        var install = Path.Combine(_root, "install"); var store = new LinuxReleaseStore(install, Path.Combine(_root, "data"));
+        Directory.CreateDirectory(install); File.WriteAllText(Path.Combine(install, "DuoLauncher"), "old");
+        var staging = Path.Combine(_root, "staging"); Directory.CreateDirectory(Path.Combine(staging, "launcher")); File.WriteAllText(Path.Combine(staging, "launcher", "DuoLauncher"), "new");
+        store.UpdateLauncherFromStaging(staging);
+        Assert.Equal("new", File.ReadAllText(Path.Combine(install, "DuoLauncher")));
+        Assert.False(Directory.Exists(Path.Combine(staging, "launcher")));
+        Assert.Empty(Directory.EnumerateFiles(install, "*.tmp"));
+    }
+
+    [Fact]
     public async Task Only_one_launcher_instance_can_hold_the_lock()
     {
         var path = Path.Combine(_root, "launcher.lock"); await using var first = await LauncherInstanceLock.TryAcquireAsync(path, TimeSpan.Zero); Assert.NotNull(first);

@@ -170,12 +170,17 @@ jobs:
           for required in \
             "${SEED}/versions/${VERSION}/app/duo_desktop" \
             "${SEED}/versions/${VERSION}/app/lib/libflutter_linux_gtk.so" \
-            "${SEED}/versions/${VERSION}/service/DuoDesktop.Service"; do
+            "${SEED}/versions/${VERSION}/service/DuoDesktop.Service" \
+            "${SEED}/DuoLauncher"; do
             [[ -f "${required}" ]] || { echo "Update payload missing ${required}" >&2; exit 1; }
           done
 
           mkdir -p "${OUT_DIR}"
-          (cd "${SEED}/versions/${VERSION}" && zip -r "${GITHUB_WORKSPACE}/${OUT_DIR}/${UPDATE_NAME}" app service)
+          mkdir -p "${OUT_DIR}/payload/launcher"
+          cp -a "${SEED}/versions/${VERSION}/app" "${SEED}/versions/${VERSION}/service" "${OUT_DIR}/payload/"
+          cp -a "${SEED}/DuoLauncher" "${OUT_DIR}/payload/launcher/DuoLauncher"
+          (cd "${OUT_DIR}/payload" && zip -r "${GITHUB_WORKSPACE}/${OUT_DIR}/${UPDATE_NAME}" app service launcher)
+          rm -rf "${OUT_DIR}/payload"
           SHA256=$(sha256sum "${OUT_DIR}/${UPDATE_NAME}" | awk '{print $1}')
           cat > "${OUT_DIR}/latest-linux.json" <<EOF
           {
