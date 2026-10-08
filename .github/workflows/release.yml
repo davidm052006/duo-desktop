@@ -53,6 +53,22 @@ jobs:
         working-directory: app
         run: flutter test
 
+      # These values are intentionally public client configuration.  Keep this
+      # gate separate from the ordinary test suite so local tests still work
+      # without release credentials, while a release cannot omit Cloud/Auth.
+      - name: Validate distributed Flutter configuration
+        working-directory: app
+        run: |
+          set -euo pipefail
+          : "${DUO_PUBLIC_CLOUD_URL:?DUO_PUBLIC_CLOUD_URL is required}"
+          : "${DUO_PUBLIC_SUPABASE_URL:?DUO_PUBLIC_SUPABASE_URL is required}"
+          : "${DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required}"
+          flutter test test/config_release_test.dart test/cliente_cloud_release_test.dart \
+            --dart-define=RELEASE_CONFIG_CHECK=true \
+            --dart-define=SUPABASE_URL="$DUO_PUBLIC_SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=DUO_CLOUD_URL="$DUO_PUBLIC_CLOUD_URL"
+
       - name: Test local service
         run: dotnet test service/tests/DuoDesktop.Service.Tests.csproj --configuration Release
 
@@ -122,6 +138,10 @@ jobs:
       - name: Build Linux release
         working-directory: app
         run: |
+          set -euo pipefail
+          : "${DUO_PUBLIC_CLOUD_URL:?DUO_PUBLIC_CLOUD_URL is required}"
+          : "${DUO_PUBLIC_SUPABASE_URL:?DUO_PUBLIC_SUPABASE_URL is required}"
+          : "${DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required}"
           flutter build linux --release -v \
             --dart-define=SUPABASE_URL="$DUO_PUBLIC_SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
@@ -138,6 +158,9 @@ jobs:
 
           if [[ -x "app/scripts/build-deb.sh" ]]; then
             echo "Using app/scripts/build-deb.sh"
+            # The bundle above is the only Flutter compilation for this
+            # release. Rebuilding inside build-deb.sh used to drop its
+            # --dart-define values and ship an unconfigured Linux app.
             DUO_DESKTOP_VERSION="${VERSION}" bash app/scripts/build-deb.sh --skip-build
             DEB=$(find . -name "duo-desktop_*_amd64.deb" -type f | head -n1)
             if [[ -z "${DEB}" ]]; then
@@ -222,6 +245,16 @@ jobs:
           (cd "${PORTABLE}" && zip -r "${GITHUB_WORKSPACE}/${ARCHIVE}" .)
           ls -lh "${ARCHIVE}"
 
+      - name: Verify Linux distributed artifacts
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          DEB="artifacts/${{ steps.package.outputs.artifact_name }}"
+          bash app/scripts/verify-linux-release-artifacts.sh \
+            "$VERSION" "$DEB" \
+            "artifacts/launcher-update/DuoDesktop-${VERSION}-linux-x64-portable.zip" \
+            "artifacts/launcher-update/DuoDesktop-${VERSION}-linux-x64-update.zip"
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
@@ -299,6 +332,9 @@ jobs:
         working-directory: app
         shell: pwsh
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:DUO_PUBLIC_CLOUD_URL)) { throw "DUO_PUBLIC_CLOUD_URL is required" }
+          if ([string]::IsNullOrWhiteSpace($env:DUO_PUBLIC_SUPABASE_URL)) { throw "DUO_PUBLIC_SUPABASE_URL is required" }
+          if ([string]::IsNullOrWhiteSpace($env:DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY)) { throw "DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required" }
           flutter build windows --release -v `
             --dart-define=SUPABASE_URL="$env:DUO_PUBLIC_SUPABASE_URL" `
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$env:DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" `

@@ -65,9 +65,23 @@ if ! grep -RInE 'cefs\.no_sandbox[[:space:]]*=[[:space:]]*false' "$CEF_COMMON" >
 fi
 
 if (( SKIP_BUILD == 0 )); then
+  # CI compiles Flutter with public Cloud/Auth dart-defines and invokes this
+  # script with --skip-build.  A standalone build can opt into the same
+  # distributed configuration by exporting the three public variables.
+  flutter_args=(flutter build linux --release)
+  if [[ -n "${DUO_PUBLIC_SUPABASE_URL:-}" || -n "${DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}" || -n "${DUO_PUBLIC_CLOUD_URL:-}" ]]; then
+    : "${DUO_PUBLIC_SUPABASE_URL:?DUO_PUBLIC_SUPABASE_URL is required when building a configured distribution}"
+    : "${DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required when building a configured distribution}"
+    : "${DUO_PUBLIC_CLOUD_URL:?DUO_PUBLIC_CLOUD_URL is required when building a configured distribution}"
+    flutter_args+=(
+      "--dart-define=SUPABASE_URL=${DUO_PUBLIC_SUPABASE_URL}"
+      "--dart-define=SUPABASE_PUBLISHABLE_KEY=${DUO_PUBLIC_SUPABASE_PUBLISHABLE_KEY}"
+      "--dart-define=DUO_CLOUD_URL=${DUO_PUBLIC_CLOUD_URL}"
+    )
+  fi
   (
     cd "$APP_ROOT"
-    flutter build linux --release
+    "${flutter_args[@]}"
   )
 fi
 

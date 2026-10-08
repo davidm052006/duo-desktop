@@ -1,4 +1,5 @@
 using System.Net;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using DuoLauncher.Linux;
 using Xunit;
@@ -72,6 +73,38 @@ public sealed class LinuxLauncherTests : IDisposable
         Assert.Equal("new", File.ReadAllText(Path.Combine(install, "DuoLauncher")));
         Assert.False(Directory.Exists(Path.Combine(staging, "launcher")));
         Assert.Empty(Directory.EnumerateFiles(install, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task Verified_update_zip_is_extracted_activated_and_selected_end_to_end()
+    {
+        var install = Path.Combine(_root, "install");
+        var data = Path.Combine(_root, "data");
+        var store = new LinuxReleaseStore(install, data);
+        CreatePayload(store.VersionDirectory("1.0.29"));
+        var payload = Path.Combine(_root, "payload");
+        CreatePayload(payload);
+        Directory.CreateDirectory(Path.Combine(payload, "launcher"));
+        await File.WriteAllTextAsync(Path.Combine(payload, "launcher", "DuoLauncher"), "new-launcher");
+        var archive = Path.Combine(_root, "update.zip");
+        ZipFile.CreateFromDirectory(payload, archive);
+        var body = await File.ReadAllBytesAsync(archive);
+        var hash = Convert.ToHexString(SHA256.HashData(body));
+        using var client = new HttpClient(new DelegateHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) }));
+        var updater = new LinuxUpdater(client, store, data, "1.0.0");
+
+        var activated = await updater.InstallAsync(
+            new CurrentRelease { Version = "1.0.29" },
+            Manifest("1.0.30", hash),
+            CancellationToken.None);
+
+        Assert.Equal("1.0.30", activated.Version);
+        Assert.Equal("1.0.29", activated.PreviousVersion);
+        Assert.Equal("1.0.30", store.ReadCurrent().Version);
+        Assert.Equal("1.0.29", store.ReadCurrent().PreviousVersion);
+        Assert.True(File.Exists(Path.Combine(store.VersionDirectory("1.0.30"), "app", "duo_desktop")));
+        Assert.Equal("new-launcher", await File.ReadAllTextAsync(Path.Combine(install, "DuoLauncher")));
+        Assert.Empty(Directory.EnumerateDirectories(Path.Combine(data, "updates", "staging")));
     }
 
     [Fact]

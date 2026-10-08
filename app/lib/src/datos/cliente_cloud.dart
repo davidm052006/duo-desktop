@@ -178,12 +178,15 @@ class InvitacionCloud {
 }
 
 class ClienteCloud {
-  ClienteCloud({http.Client? cliente}) : _cliente = cliente ?? http.Client();
+  ClienteCloud({http.Client? cliente, this.tokenProvider})
+      : _cliente = cliente ?? http.Client();
 
   final http.Client _cliente;
+  final String Function()? tokenProvider;
 
   String _token() {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    final token = tokenProvider?.call() ??
+        Supabase.instance.client.auth.currentSession?.accessToken;
     if (token == null || token.isEmpty) {
       throw const FalloCloud('La sesión de Supabase no está disponible.');
     }
