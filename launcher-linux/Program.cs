@@ -367,7 +367,7 @@ internal sealed class DesktopProgress : IProgress<ProgressInfo>, IDisposable
                 info.ArgumentList.Add("--progress"); info.ArgumentList.Add("--title=Duo Desktop"); info.ArgumentList.Add("--text=Preparando Duo Desktop…"); info.ArgumentList.Add("--percentage=0"); info.ArgumentList.Add("--auto-close"); info.ArgumentList.Add("--no-cancel");
                 _dialog = Process.Start(info); _zenityInput = _dialog?.StandardInput;
             }
-            else if (FindExecutable("kdialog") is { } kdialog && FindExecutable("qdbus6") is { })
+            else if (FindExecutable("kdialog") is { } kdialog && FindExecutable("gdbus") is { })
             {
                 var info = new ProcessStartInfo(kdialog) { UseShellExecute = false, RedirectStandardOutput = true };
                 info.ArgumentList.Add("--title"); info.ArgumentList.Add("Duo Desktop"); info.ArgumentList.Add("--progressbar"); info.ArgumentList.Add("Preparando Duo Desktop…"); info.ArgumentList.Add("100");
@@ -396,10 +396,11 @@ internal sealed class DesktopProgress : IProgress<ProgressInfo>, IDisposable
             if (!string.IsNullOrWhiteSpace(_reference))
             {
                 var parts = _reference.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2)
+                if (parts.Length >= 1)
                 {
-                    RunQdbus(parts[0], parts[1], "setValue", percent.ToString());
-                    RunQdbus(parts[0], parts[1], "setLabelText", progress.Stage);
+                    var path = parts.Length >= 2 ? parts[1] : "/ProgressDialog";
+                    RunGdbus(parts[0], path, "org.freedesktop.DBus.Properties.Set", "org.kde.kdialog.ProgressDialog", "value", $"<int32 {percent}>");
+                    RunGdbus(parts[0], path, "org.kde.kdialog.ProgressDialog.setLabelText", $"{progress.Stage}{(string.IsNullOrWhiteSpace(progress.Detail) ? "" : $" — {progress.Detail}")}");
                 }
             }
         }
@@ -417,7 +418,7 @@ internal sealed class DesktopProgress : IProgress<ProgressInfo>, IDisposable
             {
                 _reference ??= _kdialogReference.Result;
                 var parts = _reference?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts?.Length >= 2) RunQdbus(parts[0], parts[1], "close");
+                if (parts?.Length >= 1) RunGdbus(parts[0], parts.Length >= 2 ? parts[1] : "/ProgressDialog", "org.kde.kdialog.ProgressDialog.close");
             }
         }
         catch (Exception ex) { LauncherLog.Write(_dataRoot, $"No se pudo cerrar progreso gráfico: {ex.Message}"); }
@@ -425,11 +426,11 @@ internal sealed class DesktopProgress : IProgress<ProgressInfo>, IDisposable
 
     public void Dispose() { Close(); _dialog?.Dispose(); }
     private static string? FindExecutable(string name) => Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator).Select(path => Path.Combine(path, name)).FirstOrDefault(File.Exists);
-    private static void RunQdbus(string service, string path, string method, params string[] args)
+    private static void RunGdbus(string service, string path, string method, params string[] args)
     {
-        var executable = FindExecutable("qdbus6"); if (executable is null) return;
+        var executable = FindExecutable("gdbus"); if (executable is null) return;
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
-        info.ArgumentList.Add(service); info.ArgumentList.Add(path); info.ArgumentList.Add(method); foreach (var arg in args) info.ArgumentList.Add(arg);
+        info.ArgumentList.Add("call"); info.ArgumentList.Add("--session"); info.ArgumentList.Add("--dest"); info.ArgumentList.Add(service); info.ArgumentList.Add("--object-path"); info.ArgumentList.Add(path); info.ArgumentList.Add("--method"); info.ArgumentList.Add(method); foreach (var arg in args) info.ArgumentList.Add(arg);
         using var process = Process.Start(info); process?.WaitForExit(1000);
     }
 }
