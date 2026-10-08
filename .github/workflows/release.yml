@@ -138,7 +138,7 @@ jobs:
 
           if [[ -x "app/scripts/build-deb.sh" ]]; then
             echo "Using app/scripts/build-deb.sh"
-            DUO_DESKTOP_VERSION="${VERSION}" bash app/scripts/build-deb.sh
+            DUO_DESKTOP_VERSION="${VERSION}" bash app/scripts/build-deb.sh --skip-build
             DEB=$(find . -name "duo-desktop_*_amd64.deb" -type f | head -n1)
             if [[ -z "${DEB}" ]]; then
               echo "build-deb.sh did not produce a .deb" >&2
