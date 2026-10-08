@@ -7,6 +7,9 @@
     <AssemblyName>DuoLauncher</AssemblyName>
     <Version>1.0.0</Version>
     <SupportedOSPlatform>linux</SupportedOSPlatform>
+    <!-- ZipFile and other managed runtime assemblies must be available when
+         the self-contained launcher is started outside a dotnet install. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
   <ItemGroup>
     <!-- Tests live below this project, but must not be compiled into the launcher. -->
