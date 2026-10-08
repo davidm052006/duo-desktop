@@ -17,7 +17,10 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         if (args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase)) await Task.Delay(750);
-        var installRoot = AppContext.BaseDirectory;
+        // A self-contained single-file publish extracts managed assemblies to
+        // ~/.net, so AppContext.BaseDirectory is not the user's installation.
+        // Environment.ProcessPath remains the real DuoLauncher path.
+        var installRoot = Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory) ?? AppContext.BaseDirectory;
         var dataRoot = Path.Combine(Environment.GetEnvironmentVariable("XDG_DATA_HOME") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share"), "DuoDesktop");
         Directory.CreateDirectory(Path.Combine(dataRoot, "logs"));
         Directory.CreateDirectory(Path.Combine(dataRoot, "updates", "downloads"));
