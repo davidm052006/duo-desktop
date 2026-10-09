@@ -46,7 +46,9 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
   void initState() {
     super.initState();
     _usuario = widget.cloud.usuarioActual();
-    _capacidades = _duo.capacidadesAgentes();
+    _capacidades = _duo.capacidadesAgentes().catchError(
+      (_) => const <CapacidadAgenteLocal>[],
+    );
     _cargarRepo();
     _programarSeguimientoCi();
   }
