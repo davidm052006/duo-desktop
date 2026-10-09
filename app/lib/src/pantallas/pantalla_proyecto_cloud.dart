@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../datos/cliente_duo.dart';
 import '../datos/cliente_cloud.dart';
@@ -65,9 +64,12 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
     );
     if (invitacion == null || !mounted) return;
 
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _DialogTokenInvitacion(invitacion: invitacion),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Invitación enviada a ${invitacion.email}. El destinatario debe pegar el token recibido en “Aceptar invitación”.',
+        ),
+      ),
     );
     setState(_recargar);
   }
@@ -622,56 +624,7 @@ class _DialogInvitarState extends State<_DialogInvitar> {
           ),
           FilledButton(
             onPressed: _enviando ? null : _enviar,
-            child: Text(_enviando ? 'Creando…' : 'Crear invitación'),
-          ),
-        ],
-      );
-}
-
-class _DialogTokenInvitacion extends StatelessWidget {
-  const _DialogTokenInvitacion({required this.invitacion});
-  final InvitacionCloud invitacion;
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        backgroundColor: context.paleta.panel,
-        title: const Text('Invitación creada'),
-        content: SizedBox(
-          width: 540,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${invitacion.email} · ${invitacion.rol}'),
-              const SizedBox(height: 12),
-              Text(
-                'Este token se muestra una sola vez. Compártelo con el invitado.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              SelectableText(
-                invitacion.token,
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: invitacion.token));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Token copiado')),
-                );
-              }
-            },
-            icon: const Icon(Icons.copy),
-            label: const Text('Copiar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Listo'),
+            child: Text(_enviando ? 'Enviando…' : 'Enviar invitación'),
           ),
         ],
       );
