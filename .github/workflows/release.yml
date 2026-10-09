@@ -350,6 +350,7 @@ jobs:
           Get-ChildItem artifacts
 
       - name: Create test signing certificate and sign Windows binaries
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -370,25 +371,30 @@ jobs:
             -NotAfter (Get-Date).AddYears(2)
 
           Export-Certificate -Cert $cert -FilePath "$signingDir\DuoDesktop-Test-Signing.cer" | Out-Null
-          Import-Certificate -FilePath "$signingDir\DuoDesktop-Test-Signing.cer" -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
-          Import-Certificate -FilePath "$signingDir\DuoDesktop-Test-Signing.cer" -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
+
+          $pfxPassword = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+          $secure = ConvertTo-SecureString $pfxPassword -AsPlainText -Force
+          Export-PfxCertificate -Cert $cert -FilePath "$signingDir\DuoDesktop-Test-Signing.pfx" -Password $secure | Out-Null
+
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
 
           foreach ($target in @(
             "$stage\app\duo_desktop.exe",
             "$stage\service\DuoDesktop.Service.exe"
           )) {
             if (-not (Test-Path $target)) { throw "Signing target missing: $target" }
-            Set-AuthenticodeSignature -FilePath $target -Certificate $cert -HashAlgorithm SHA256 | Out-Null
-            $sig = Get-AuthenticodeSignature $target
-            if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
-              throw "Authenticode signing failed for $target"
-            }
-            Write-Host "Signed $target"
+            & $signtool.FullName sign /fd SHA256 /f "$signingDir\DuoDesktop-Test-Signing.pfx" /p $pfxPassword $target
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed for $target with exit code $LASTEXITCODE" }
+            & $signtool.FullName verify /pa $target
+            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target" }
           }
 
-          "DUO_TEST_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Exported public test certificate."
-
+          "DUO_TEST_PFX=$signingDir\DuoDesktop-Test-Signing.pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DUO_TEST_PFX_PASSWORD=$pfxPassword" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DUO_SIGNTOOL=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
       # DuoLauncher update payload: a zip with app\ and service\ at its root,
       # plus latest.json, which the launcher reads from the latest release.
       - name: Package DuoLauncher update
@@ -434,14 +440,11 @@ jobs:
 
           gh release download launcher-v1.0.0 --repo "${{ github.repository }}" --pattern DuoLauncher.exe --dir artifacts\launcher-bin
 
-          $cert = Get-ChildItem "Cert:\CurrentUser\My\\$env:DUO_TEST_CERT_THUMBPRINT"
-          if (-not $cert) { throw "Duo test signing certificate not found" }
+          if (-not (Test-Path $env:DUO_TEST_PFX)) { throw "Duo test signing PFX not found" }
+          if (-not (Test-Path $env:DUO_SIGNTOOL)) { throw "signtool.exe not found" }
 
-          Set-AuthenticodeSignature -FilePath "artifacts\launcher-bin\DuoLauncher.exe" -Certificate $cert -HashAlgorithm SHA256 | Out-Null
-          $launcherSig = Get-AuthenticodeSignature "artifacts\launcher-bin\DuoLauncher.exe"
-          if (-not $launcherSig.SignerCertificate -or $launcherSig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
-            throw "Authenticode signing failed for DuoLauncher.exe"
-          }
+          & $env:DUO_SIGNTOOL sign /fd SHA256 /f $env:DUO_TEST_PFX /p $env:DUO_TEST_PFX_PASSWORD "artifacts\launcher-bin\DuoLauncher.exe"
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed for DuoLauncher.exe with exit code $LASTEXITCODE" }
 
           New-Item -ItemType Directory -Force -Path "$portable\versions\\$version" | Out-Null
           Copy-Item "$stage\app", "$stage\service" "$portable\versions\\$version" -Recurse
@@ -495,7 +498,8 @@ jobs:
 
           $installer = Get-ChildItem "$out\DuoDesktop-Setup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $installer) { throw "DuoDesktop installer not found after Inno Setup" }
-          Set-AuthenticodeSignature -FilePath $installer.FullName -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+          & $env:DUO_SIGNTOOL sign /fd SHA256 /f $env:DUO_TEST_PFX /p $env:DUO_TEST_PFX_PASSWORD $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed for installer with exit code $LASTEXITCODE" }
 
           foreach ($target in @(
             "$portable\DuoLauncher.exe",
@@ -503,10 +507,9 @@ jobs:
             "$portable\versions\\$version\service\DuoDesktop.Service.exe",
             $installer.FullName
           )) {
-            $sig = Get-AuthenticodeSignature $target
-            if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
-              throw "Final signature verification failed for $target"
-            }
+            & $env:DUO_SIGNTOOL verify /pa $target
+            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target" }
+          }
             Write-Host "Verified signed artifact: $target"
           }
 
