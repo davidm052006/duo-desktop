@@ -10,13 +10,12 @@ import '../widgets/carga_agentes.dart';
 import '../widgets/panel_fallo.dart';
 import '../widgets/tablero_kanban.dart';
 
-/// El tablero. Fase 2: Kanban de solo lectura sobre el endpoint existente.
 class PantallaTablero extends StatelessWidget {
   const PantallaTablero({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final activo = context.watch<EstadoProyectoActivo>().proyecto;
+    final activo = context.watch<EstadoProyectoActivo?>()?.proyecto;
     if (activo != null) {
       return _PantallaTableroCloud(proyecto: activo);
     }
@@ -301,6 +300,7 @@ class _PantallaTableroCloud extends StatefulWidget {
 class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
   late final ClienteCloud _cloud;
   late Future<List<TareaCloud>> _tareas;
+  late Future<List<MiembroCloud>> _miembros;
 
   @override
   void initState() {
@@ -325,6 +325,31 @@ class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
 
   void _recargar() {
     _tareas = _cloud.tareas(widget.proyecto.id);
+    _miembros = _cloud.miembros(widget.proyecto.id);
+  }
+
+  Future<void> _crearTarea() async {
+    try {
+      final miembros = await _miembros;
+      if (!mounted) return;
+      final creada = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _DialogNuevaTareaCloud(
+          cloud: _cloud,
+          proyecto: widget.proyecto,
+          miembros: miembros,
+        ),
+      );
+      if (creada == true && mounted) {
+        setState(_recargar);
+      }
+    } on Object catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudieron cargar los miembros: $e')),
+      );
+    }
   }
 
   @override
@@ -345,6 +370,15 @@ class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
           ],
         ),
         actions: [
+          if (widget.proyecto.rol == 'owner' || widget.proyecto.rol == 'editor')
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilledButton.icon(
+                onPressed: _crearTarea,
+                icon: const Icon(Icons.add_task, size: 17),
+                label: const Text('Nueva tarea'),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 6),
             child: Center(
@@ -555,4 +589,179 @@ class _ColumnaCloud extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class _DialogNuevaTareaCloud extends StatefulWidget {
+  const _DialogNuevaTareaCloud({
+    required this.cloud,
+    required this.proyecto,
+    required this.miembros,
+  });
+
+  final ClienteCloud cloud;
+  final ProyectoCloud proyecto;
+  final List<MiembroCloud> miembros;
+
+  @override
+  State<_DialogNuevaTareaCloud> createState() => _DialogNuevaTareaCloudState();
+}
+
+class _DialogNuevaTareaCloudState extends State<_DialogNuevaTareaCloud> {
+  final _id = TextEditingController();
+  final _titulo = TextEditingController();
+  final _rama = TextEditingController();
+  String? _asignado;
+  String _provider = 'chatgpt';
+  bool _guardando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _id.dispose();
+    _titulo.dispose();
+    _rama.dispose();
+    super.dispose();
+  }
+
+  Future<void> _crear() async {
+    final id = _id.text.trim();
+    final titulo = _titulo.text.trim();
+    final rama = _rama.text.trim();
+
+    if (id.isEmpty || titulo.isEmpty || rama.isEmpty || _guardando) {
+      setState(() => _error = 'ID, título y rama son obligatorios.');
+      return;
+    }
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+
+    try {
+      await widget.cloud.upsertTarea(
+        projectId: widget.proyecto.id,
+        externalId: id,
+        titulo: titulo,
+        ownerAgent: _provider,
+        estado: 'pending',
+        rama: rama,
+        assignedUserId: _asignado,
+        workProvider: _provider,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _guardando = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        backgroundColor: context.paleta.panel,
+        title: Text('Nueva tarea · ${widget.proyecto.nombre}'),
+        content: SizedBox(
+          width: 580,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: _id,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'ID',
+                    hintText: 'T-001',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _titulo,
+                  decoration: const InputDecoration(labelText: 'Título'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  initialValue: _asignado,
+                  decoration: const InputDecoration(labelText: 'Asignar a'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Sin asignar'),
+                    ),
+                    for (final miembro in widget.miembros)
+                      DropdownMenuItem<String?>(
+                        value: miembro.id,
+                        child: Text(
+                          miembro.nombre?.trim().isNotEmpty == true
+                              ? '${miembro.nombre} · ${miembro.email}'
+                              : miembro.email,
+                        ),
+                      ),
+                  ],
+                  onChanged: _guardando
+                      ? null
+                      : (value) => setState(() => _asignado = value),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _provider,
+                  decoration: const InputDecoration(labelText: 'Agente / proveedor'),
+                  items: const [
+                    DropdownMenuItem(value: 'chatgpt', child: Text('ChatGPT Web')),
+                    DropdownMenuItem(value: 'grok', child: Text('Grok Web')),
+                    DropdownMenuItem(value: 'codex', child: Text('Codex')),
+                    DropdownMenuItem(value: 'claude', child: Text('Claude Code')),
+                    DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
+                  ],
+                  onChanged: _guardando
+                      ? null
+                      : (value) {
+                          if (value != null) setState(() => _provider = value);
+                        },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _rama,
+                  decoration: InputDecoration(
+                    labelText: 'Rama de trabajo',
+                    hintText: 'feature/T-001-descripcion',
+                    helperText: 'Rama objetivo del proyecto: ${widget.proyecto.ramaObjetivo}',
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: context.paleta.critico),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _guardando ? null : () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: _guardando ? null : _crear,
+            icon: _guardando
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.add_task, size: 17),
+            label: Text(_guardando ? 'Creando…' : 'Crear y asignar'),
+          ),
+        ],
+      );
 }
