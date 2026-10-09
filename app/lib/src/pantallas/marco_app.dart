@@ -325,7 +325,7 @@ class _BarraMarca extends StatelessWidget {
   Widget build(BuildContext context) {
     final paleta = context.paleta;
     final estado = context.watch<EstadoTablero>();
-    final proyectoCloud = context.watch<EstadoProyectoActivo>().proyecto;
+    final proyectoCloud = context.watch<EstadoProyectoActivo?>()?.proyecto;
     final repo = proyectoCloud?.repositorio ?? estado.tablero?.proyecto?.repo ?? '';
 
     return ValueListenableBuilder<double>(
