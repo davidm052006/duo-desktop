@@ -388,8 +388,10 @@ jobs:
             if (-not (Test-Path $target)) { throw "Signing target missing: $target" }
             & $signtool.FullName sign /fd SHA256 /f "$signingDir\DuoDesktop-Test-Signing.pfx" /p $pfxPassword $target
             if ($LASTEXITCODE -ne 0) { throw "signtool failed for $target with exit code $LASTEXITCODE" }
-            & $signtool.FullName verify /pa $target
-            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target" }
+            $sig = Get-AuthenticodeSignature $target
+            if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
+              throw "Signature verification failed for $target"
+            }
           }
 
           "DUO_TEST_PFX=$signingDir\DuoDesktop-Test-Signing.pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -501,14 +503,21 @@ jobs:
           & $env:DUO_SIGNTOOL sign /fd SHA256 /f $env:DUO_TEST_PFX /p $env:DUO_TEST_PFX_PASSWORD $installer.FullName
           if ($LASTEXITCODE -ne 0) { throw "signtool failed for installer with exit code $LASTEXITCODE" }
 
+          $pfx = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $env:DUO_TEST_PFX,
+            $env:DUO_TEST_PFX_PASSWORD,
+            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+          )
           foreach ($target in @(
             "$portable\DuoLauncher.exe",
             "$portable\versions\\$version\app\duo_desktop.exe",
             "$portable\versions\\$version\service\DuoDesktop.Service.exe",
             $installer.FullName
           )) {
-            & $env:DUO_SIGNTOOL verify /pa $target
-            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target" }
+            $sig = Get-AuthenticodeSignature $target
+            if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $pfx.Thumbprint) {
+              throw "Signature verification failed for $target"
+            }
           }
             Write-Host "Verified signed artifact: $target"
           }
