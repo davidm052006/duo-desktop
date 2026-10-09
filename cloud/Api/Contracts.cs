@@ -19,6 +19,7 @@ public sealed record AppendTaskEventRequest(
     string? Type,
     string? Agent,
     string? PayloadJson);
+public sealed record SubmitTaskRequest(string? Result);
 
 public sealed record UpsertPullRequestRequest(
     int GitHubNumber,
