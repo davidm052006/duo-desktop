@@ -232,17 +232,6 @@ class _Ficha extends StatelessWidget {
       titulo: agente.alias,
       icono: Icons.person_outline,
       sufijo: _PuntoEstado(estado: agente.estado),
-      pie: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Si el proceso del CLI sigue vivo lo dirá el vigilante',
-              style: textos.labelSmall,
-            ),
-          ),
-          const MarcaFase(2),
-        ],
-      ),
       hijo: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
