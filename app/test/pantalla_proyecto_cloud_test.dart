@@ -76,16 +76,15 @@ void main() {
     expect(find.text('Registrar PR'), findsNothing);
   });
 
-  testWidgets('editor crea tarea y no puede confirmar merge', (tester) async {
+  testWidgets('editor no puede crear ni editar tareas', (tester) async {
     await tester.pumpWidget(_app('editor', [_tarea()]));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Tareas'));
     await tester.pumpAndSettle();
-    expect(find.text('Nueva tarea'), findsOneWidget);
-    await tester.tap(find.text('Registrar PR'));
-    await tester.pumpAndSettle();
-    expect(find.text('Confirmar merge'), findsNothing);
+    expect(find.text('Nueva tarea'), findsNothing);
+    expect(find.text('Editar tarea'), findsNothing);
+    expect(find.text('Registrar PR'), findsNothing);
   });
 
   testWidgets('owner ve invitar y acciones owner', (tester) async {
@@ -95,6 +94,8 @@ void main() {
     expect(find.text('Invitar'), findsOneWidget);
     await tester.tap(find.text('Tareas'));
     await tester.pumpAndSettle();
+    expect(find.text('Nueva tarea'), findsOneWidget);
+    expect(find.text('Editar tarea'), findsOneWidget);
     await tester.tap(find.text('Registrar PR'));
     await tester.pumpAndSettle();
     expect(find.text('Confirmar merge'), findsNothing);
