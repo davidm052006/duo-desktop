@@ -235,7 +235,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                         builder: (context) {
                           final estado = context.watch<EstadoTablero>();
                           final proyectoCloud =
-                              context.watch<EstadoProyectoActivo>().proyecto;
+                              context.watch<EstadoProyectoActivo?>()?.proyecto;
                           final nombre = destinos[_activo].nombre;
                           final libreDeBoard = nombre == 'Proyectos' ||
                               nombre == 'Chats' ||
