@@ -375,8 +375,8 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
 {
     var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
     if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
-    if (!ProjectRoles.CanWrite(access.Value.Role))
-        return ApiError(403, "write_forbidden", "Tu rol no permite modificar tareas.");
+    if (access.Value.Role != ProjectRoles.Owner)
+        return ApiError(403, "owner_required", "Solo el owner puede crear, editar o reasignar tareas.");
 
     var externalId = request.ExternalId?.Trim();
     var title = request.Title?.Trim();
@@ -463,6 +463,132 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
 }).RequireAuthorization();
 
 
+app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/start", async (
+    Guid projectId,
+    string externalId,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    IHubContext<ProjectHub> hub,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+
+    var task = await db.Tasks.SingleOrDefaultAsync(
+        x => x.ProjectId == projectId && x.ExternalId == externalId,
+        ct);
+    if (task is null)
+        return ApiError(404, "task_not_found", "La tarea no existe en el proyecto.");
+
+    var canWork = access.Value.Role == ProjectRoles.Owner ||
+        task.AssignedUserId == access.Value.User.Id;
+    if (!canWork)
+        return ApiError(403, "assignee_required", "Solo el usuario asignado o el owner puede iniciar esta tarea.");
+
+    task.Status = TaskStatuses.InProgress;
+    task.UpdatedAt = DateTimeOffset.UtcNow;
+
+    db.TaskEvents.Add(new TaskEvent
+    {
+        ProjectId = projectId,
+        TaskId = task.Id,
+        Type = "task_started",
+        Agent = task.WorkProvider,
+        ActorUserId = access.Value.User.Id,
+        CreatedAt = task.UpdatedAt,
+    });
+
+    await db.SaveChangesAsync(ct);
+
+    await hub.Clients.Group(ProjectHub.GroupName(projectId)).SendAsync(
+        "task_changed",
+        new
+        {
+            task.Id,
+            task.ProjectId,
+            task.ExternalId,
+            task.Title,
+            task.OwnerAgent,
+            task.Status,
+            task.Branch,
+            task.AssignedUserId,
+            task.WorkProvider,
+            task.CreatedAt,
+            task.UpdatedAt,
+        },
+        ct);
+
+    return Results.Ok();
+}).RequireAuthorization();
+
+app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/submit", async (
+    Guid projectId,
+    string externalId,
+    SubmitTaskRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    IHubContext<ProjectHub> hub,
+    CancellationToken ct) =>
+{
+    var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
+    if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
+
+    var task = await db.Tasks.SingleOrDefaultAsync(
+        x => x.ProjectId == projectId && x.ExternalId == externalId,
+        ct);
+    if (task is null)
+        return ApiError(404, "task_not_found", "La tarea no existe en el proyecto.");
+
+    var canSubmit = access.Value.Role == ProjectRoles.Owner ||
+        task.AssignedUserId == access.Value.User.Id;
+    if (!canSubmit)
+        return ApiError(403, "assignee_required", "Solo el usuario asignado o el owner puede entregar esta tarea.");
+
+    var result = request.Result?.Trim();
+    if (string.IsNullOrWhiteSpace(result))
+        return ApiError(422, "empty_submission", "El resultado no puede estar vacío.");
+    if (result.Length > 500_000)
+        return ApiError(413, "submission_too_large", "El resultado supera el límite permitido.");
+
+    var now = DateTimeOffset.UtcNow;
+    task.Status = TaskStatuses.InReview;
+    task.UpdatedAt = now;
+
+    db.TaskEvents.Add(new TaskEvent
+    {
+        ProjectId = projectId,
+        TaskId = task.Id,
+        Type = "submission_collected",
+        Agent = task.WorkProvider,
+        PayloadJson = JsonSerializer.Serialize(new { result }),
+        ActorUserId = access.Value.User.Id,
+        CreatedAt = now,
+    });
+
+    await db.SaveChangesAsync(ct);
+
+    await hub.Clients.Group(ProjectHub.GroupName(projectId)).SendAsync(
+        "task_changed",
+        new
+        {
+            task.Id,
+            task.ProjectId,
+            task.ExternalId,
+            task.Title,
+            task.OwnerAgent,
+            task.Status,
+            task.Branch,
+            task.AssignedUserId,
+            task.WorkProvider,
+            task.CreatedAt,
+            task.UpdatedAt,
+        },
+        ct);
+
+    return Results.Ok(new { task.ExternalId, task.Status });
+}).RequireAuthorization();
+
+
 app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/pull-request", async (
     Guid projectId,
     string externalId,
@@ -474,8 +600,8 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/pull-request", as
 {
     var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
     if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
-    if (!ProjectRoles.CanWrite(access.Value.Role))
-        return ApiError(403, "write_forbidden", "Tu rol no permite actualizar pull requests.");
+    if (access.Value.Role != ProjectRoles.Owner)
+        return ApiError(403, "owner_required", "Solo el owner puede actualizar pull requests.");
 
     var project = await db.Projects.SingleAsync(x => x.Id == projectId, ct);
     var task = await db.Tasks
