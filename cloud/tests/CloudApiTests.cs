@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using DuoDesktop.Cloud.Data;
 using DuoDesktop.Cloud.Domain;
+using DuoDesktop.Cloud.Email;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -82,23 +83,29 @@ public sealed class CloudApiTests : IClassFixture<CloudApiFactory>
         Assert.Equal(HttpStatusCode.Created, invitation.StatusCode);
         var body = await invitation.Content.ReadFromJsonAsync<InvitationDto>();
         Assert.NotNull(body);
+        Assert.True(body!.emailSent);
+
+        var sender = _factory.Services.GetRequiredService<TestInvitationEmailSender>();
+        var inviteToken = sender.TokenFor("invitee@example.test");
+        Assert.False(string.IsNullOrWhiteSpace(inviteToken));
+        Assert.DoesNotContain("inviteToken", await invitation.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
 
         await using (var db = _factory.Db())
         {
-            var stored = await db.ProjectInvitations.SingleAsync(x => x.Id == body!.id);
-            Assert.Equal(Hash(body.inviteToken), stored.TokenHash);
-            Assert.NotEqual(body.inviteToken, stored.TokenHash);
+            var stored = await db.ProjectInvitations.SingleAsync(x => x.Id == body.id);
+            Assert.Equal(Hash(inviteToken), stored.TokenHash);
+            Assert.NotEqual(inviteToken, stored.TokenHash);
         }
 
         var mismatch = await _factory.Client("other", "other@example.test")
-            .PostAsync($"/api/invitations/{body!.inviteToken}/accept", null);
+            .PostAsync($"/api/invitations/{inviteToken}/accept", null);
         Assert.Equal(HttpStatusCode.Forbidden, mismatch.StatusCode);
 
         var accepted = await _factory.Client("invitee", "invitee@example.test")
-            .PostAsync($"/api/invitations/{body.inviteToken}/accept", null);
+            .PostAsync($"/api/invitations/{inviteToken}/accept", null);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
         var again = await _factory.Client("invitee", "invitee@example.test")
-            .PostAsync($"/api/invitations/{body.inviteToken}/accept", null);
+            .PostAsync($"/api/invitations/{inviteToken}/accept", null);
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
 
         await using var verify = _factory.Db();
@@ -238,7 +245,7 @@ public sealed class CloudApiTests : IClassFixture<CloudApiFactory>
     private static object TaskRequest(string externalId, string title = "task") => new { externalId, title, ownerAgent = "codex", status = "in_progress", branch = "codex/task", assignedUserId = (Guid?)null, workProvider = "codex" };
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
     private sealed record ProjectDto(Guid id, string role);
-    private sealed record InvitationDto(Guid id, string inviteToken);
+    private sealed record InvitationDto(Guid id, bool emailSent);
     private sealed record EventDto(long id);
 }
 
@@ -255,6 +262,9 @@ public sealed class CloudApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions>();
             services.RemoveAll<IDbContextOptionsConfiguration<DuoCloudDbContext>>();
             services.AddDbContext<DuoCloudDbContext>(options => options.UseInMemoryDatabase(_databaseName));
+            services.RemoveAll<IInvitationEmailSender>();
+            services.AddSingleton<TestInvitationEmailSender>();
+            services.AddSingleton<IInvitationEmailSender>(sp => sp.GetRequiredService<TestInvitationEmailSender>());
             services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("test", _ => { });
         });
     }
@@ -282,4 +292,26 @@ public sealed class TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions>
         var identity = new ClaimsIdentity([new Claim("sub", sub), new Claim("email", email), new Claim("name", Request.Headers["X-Test-Name"].ToString())], Scheme.Name);
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
     }
+}
+
+
+public sealed class TestInvitationEmailSender : IInvitationEmailSender
+{
+    private readonly Dictionary<string, string> _tokens =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public Task SendAsync(
+        string email,
+        string token,
+        string projectName,
+        string role,
+        DateTimeOffset expiresAt,
+        CancellationToken ct)
+    {
+        _tokens[email] = token;
+        return Task.CompletedTask;
+    }
+
+    public string TokenFor(string email) =>
+        _tokens.TryGetValue(email, out var token) ? token : "";
 }
