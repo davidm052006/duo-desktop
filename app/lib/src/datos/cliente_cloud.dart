@@ -165,16 +165,16 @@ class TareaCloud {
 
 class InvitacionCloud {
   const InvitacionCloud({
-    required this.token,
     required this.email,
     required this.rol,
     required this.expira,
+    required this.emailEnviado,
   });
 
-  final String token;
   final String email;
   final String rol;
   final DateTime? expira;
+  final bool emailEnviado;
 }
 
 class ClienteCloud {
@@ -289,10 +289,10 @@ class ClienteCloud {
       throw const FalloCloud('Respuesta inválida al crear invitación.');
     }
     return InvitacionCloud(
-      token: '${decoded['inviteToken'] ?? ''}',
       email: '${decoded['email'] ?? email}',
       rol: '${decoded['role'] ?? rol}',
       expira: DateTime.tryParse('${decoded['expiresAt'] ?? ''}'),
+      emailEnviado: decoded['emailSent'] == true,
     );
   }
 
