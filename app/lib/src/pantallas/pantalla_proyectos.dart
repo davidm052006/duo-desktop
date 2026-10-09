@@ -43,12 +43,15 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
   }
 
   Future<void> _nuevoProyecto() async {
-    final creado = await showDialog<bool>(
+    final creado = await showDialog<ProyectoCloud>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _DialogNuevoProyecto(cloud: _cloud),
     );
-    if (creado == true && mounted) _refrescar();
+    if (creado != null && mounted) {
+      context.read<EstadoProyectoActivo>().seleccionar(creado);
+      _refrescar();
+    }
   }
 
   Future<void> _aceptarInvitacion() async {
@@ -519,14 +522,14 @@ class _DialogNuevoProyectoState extends State<_DialogNuevoProyecto> {
     });
 
     try {
-      await widget.cloud.crearProyecto(
+      final creado = await widget.cloud.crearProyecto(
         nombre: _nombre.text.trim(),
         slug: _slug.text.trim(),
         repositorio: _repo.text.trim(),
         ramaObjetivo: _rama.text.trim(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(creado);
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
