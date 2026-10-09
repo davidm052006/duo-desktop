@@ -6,7 +6,6 @@ import '../datos/cliente_cloud.dart';
 import '../estado/estado_proyecto_activo.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
-import 'pantalla_proyecto_cloud.dart';
 
 class PantallaProyectos extends StatefulWidget {
   const PantallaProyectos({super.key});
@@ -18,7 +17,6 @@ class PantallaProyectos extends StatefulWidget {
 class _PantallaProyectosState extends State<PantallaProyectos> {
   late final ClienteCloud _cloud;
   late Future<List<ProyectoCloud>> _carga;
-  ProyectoCloud? _abierto;
 
   @override
   void initState() {
@@ -65,13 +63,6 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
 
   @override
   Widget build(BuildContext context) {
-    if (_abierto != null) {
-      return PantallaProyectoCloud(
-        proyecto: _abierto!,
-        volver: () => setState(() => _abierto = null),
-      );
-    }
-
     final paleta = context.paleta;
     final textos = Theme.of(context).textTheme;
 
@@ -194,7 +185,13 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
                               context
                                   .read<EstadoProyectoActivo>()
                                   .seleccionar(proyecto);
-                              setState(() => _abierto = proyecto);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '${proyecto.nombre} seleccionado. Abre Tablero o Tareas.',
+                                  ),
+                                ),
+                              );
                             },
                           ),
                         ),
