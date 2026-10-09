@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../config_cloud.dart';
 import '../datos/cliente_cloud.dart';
+import '../estado/estado_proyecto_activo.dart';
 import '../tema/paleta.dart';
 import '../widgets/tarjeta.dart';
 import 'pantalla_proyecto_cloud.dart';
@@ -185,7 +187,12 @@ class _PantallaProyectosState extends State<PantallaProyectos> {
                           width: ancho,
                           child: _TarjetaProyecto(
                             proyecto: proyecto,
-                            abrir: () => setState(() => _abierto = proyecto),
+                            abrir: () {
+                              context
+                                  .read<EstadoProyectoActivo>()
+                                  .seleccionar(proyecto);
+                              setState(() => _abierto = proyecto);
+                            },
                           ),
                         ),
                     ],
