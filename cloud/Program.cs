@@ -52,6 +52,32 @@ await using (var scope = app.Services.CreateAsyncScope())
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapGet("/auth/confirmed", () => Results.Content(
+    """
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Duo Desktop · correo confirmado</title>
+        <style>
+          body { font-family: system-ui, sans-serif; background:#0f1020; color:#f4f1ff; display:grid; place-items:center; min-height:100vh; margin:0; }
+          main { max-width:560px; padding:32px; border:1px solid #343555; border-radius:16px; background:#17182a; }
+          h1 { margin-top:0; }
+          p { color:#c9c6da; line-height:1.5; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>Correo confirmado</h1>
+          <p>Tu cuenta de Duo Desktop ya puede iniciar sesión.</p>
+          <p>Vuelve a Duo Desktop e ingresa con tu correo y contraseña.</p>
+        </main>
+      </body>
+    </html>
+    """,
+    "text/html; charset=utf-8"));
+
 app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
