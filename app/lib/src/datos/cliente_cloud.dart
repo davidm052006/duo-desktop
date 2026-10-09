@@ -325,6 +325,28 @@ class ClienteCloud {
     );
   }
 
+  Future<void> iniciarTarea({
+    required String projectId,
+    required String externalId,
+  }) async {
+    await _enviar(
+      'POST',
+      '/api/projects/$projectId/tasks/${Uri.encodeComponent(externalId)}/start',
+    );
+  }
+
+  Future<void> entregarTarea({
+    required String projectId,
+    required String externalId,
+    required String resultado,
+  }) async {
+    await _enviar(
+      'POST',
+      '/api/projects/$projectId/tasks/${Uri.encodeComponent(externalId)}/submit',
+      cuerpo: {'result': resultado},
+    );
+  }
+
   Future<void> upsertPullRequest({
     required String projectId,
     required String externalId,
