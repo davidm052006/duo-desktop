@@ -655,6 +655,7 @@ public sealed record CommitWorkspaceRequest(
     string? Message);
 
 public sealed record PushWorkspaceRequest(string? WorkspaceId);
+public sealed record ApplyPatchWorkspaceRequest(string? WorkspaceId, string? Patch);
 public sealed record LaunchAgentRequest(string? WorkspaceId, string? Provider);
 
 public sealed record PullRequestWorkspaceRequest(
