@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../datos/cliente_cloud.dart';
+import '../estado/estado_proyecto_activo.dart';
 import '../estado/estado_tablero.dart';
 import '../modelos/tablero.dart';
 import '../tema/paleta.dart';
@@ -14,6 +16,11 @@ class PantallaTablero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final activo = context.watch<EstadoProyectoActivo>().proyecto;
+    if (activo != null) {
+      return _PantallaTableroCloud(proyecto: activo);
+    }
+
     final estado = context.watch<EstadoTablero>();
 
     return Scaffold(
@@ -151,8 +158,6 @@ class _Contenido extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _AvisoFaseUno(),
-                const SizedBox(height: 14),
                 Expanded(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -176,8 +181,6 @@ class _Contenido extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
-            _AvisoFaseUno(),
-            const SizedBox(height: 14),
             SizedBox(
               height: 560,
               child: TableroKanban(tareas: tablero.tareas),
@@ -227,20 +230,6 @@ class _PanelResumen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AvisoFaseUno extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-    color: Theme.of(
-      context,
-    ).colorScheme.surfaceContainerHighest.withValues(alpha: .45),
-    child: Text(
-      'Modo inspección: los datos se leen de .team/BOARD.md. Arrastrar tarjetas y ejecutar acciones llegará en Fase 2.',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-  );
 }
 
 class _Seccion extends StatelessWidget {
@@ -295,6 +284,275 @@ class _Procedencia extends StatelessWidget {
         if (proyecto.pizarra.isNotEmpty)
           Text('.team   ${proyecto.pizarra}/.team', style: estilo),
       ],
+    );
+  }
+}
+
+
+class _PantallaTableroCloud extends StatefulWidget {
+  const _PantallaTableroCloud({required this.proyecto});
+
+  final ProyectoCloud proyecto;
+
+  @override
+  State<_PantallaTableroCloud> createState() => _PantallaTableroCloudState();
+}
+
+class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
+  late final ClienteCloud _cloud;
+  late Future<List<TareaCloud>> _tareas;
+
+  @override
+  void initState() {
+    super.initState();
+    _cloud = ClienteCloud();
+    _recargar();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PantallaTableroCloud oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.proyecto.id != widget.proyecto.id) {
+      _recargar();
+    }
+  }
+
+  @override
+  void dispose() {
+    _cloud.cierra();
+    super.dispose();
+  }
+
+  void _recargar() {
+    _tareas = _cloud.tareas(widget.proyecto.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        titleSpacing: 24,
+        title: Row(
+          children: [
+            Text('Tablero', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(width: 10),
+            Text(
+              widget.proyecto.nombre,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Center(
+              child: Text(
+                widget.proyecto.repositorio,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: context.paleta.tintaTenue,
+                    ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Actualizar tareas del proyecto',
+            onPressed: () => setState(_recargar),
+            icon: const Icon(Icons.refresh, size: 19),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: FutureBuilder<List<TareaCloud>>(
+        future: _tareas,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+          if (snapshot.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'No se pudo cargar el tablero Cloud: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+
+          final tareas = snapshot.data ?? const <TareaCloud>[];
+          return _KanbanCloud(
+            proyecto: widget.proyecto,
+            tareas: tareas,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _KanbanCloud extends StatelessWidget {
+  const _KanbanCloud({required this.proyecto, required this.tareas});
+
+  final ProyectoCloud proyecto;
+  final List<TareaCloud> tareas;
+
+  static const _estados = <(String, String)>[
+    ('pending', 'Pendientes'),
+    ('in_progress', 'En progreso'),
+    ('waiting', 'Esperando'),
+    ('in_review', 'En revisión'),
+    ('finalized', 'Finalizadas'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    if (tareas.isEmpty) {
+      return Center(
+        child: Text(
+          'No hay tareas en ${proyecto.nombre}.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < _estados.length; i++) ...[
+            if (i > 0) const SizedBox(width: 14),
+            _ColumnaCloud(
+              titulo: _estados[i].$2,
+              estado: _estados[i].$1,
+              tareas: tareas.where((t) => t.estado == _estados[i].$1).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ColumnaCloud extends StatelessWidget {
+  const _ColumnaCloud({
+    required this.titulo,
+    required this.estado,
+    required this.tareas,
+  });
+
+  final String titulo;
+  final String estado;
+  final List<TareaCloud> tareas;
+
+  @override
+  Widget build(BuildContext context) {
+    final paleta = context.paleta;
+    return SizedBox(
+      width: 285,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: paleta.panel,
+          border: Border.all(color: paleta.rejilla),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      titulo.toUpperCase(),
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                  Text(
+                    '${tareas.length}',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (tareas.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 22),
+                  child: Text(
+                    'Sin tareas',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: paleta.tintaTenue,
+                        ),
+                  ),
+                )
+              else
+                for (final tarea in tareas)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: .35),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: paleta.rejilla),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(11),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              tarea.externalId,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    fontFamily: 'monospace',
+                                    color: paleta.acentoAlt,
+                                  ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              tarea.titulo,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 9),
+                            Text(
+                              tarea.assignedEmail ?? tarea.ownerAgent,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: paleta.tintaSecundaria,
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              tarea.workProvider,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontFamily: 'monospace',
+                                    color: paleta.tintaTenue,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
