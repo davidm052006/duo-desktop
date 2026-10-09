@@ -40,7 +40,7 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
     _tabs = TabController(
       length: 3,
       vsync: this,
-      initialIndex: widget.initialTab.clamp(0, 2),
+      initialIndex: widget.initialTab < 0 ? 0 : (widget.initialTab > 2 ? 2 : widget.initialTab),
     );
     _recargar();
   }
