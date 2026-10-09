@@ -88,7 +88,10 @@ public sealed class CloudApiTests : IClassFixture<CloudApiFactory>
         var sender = _factory.Services.GetRequiredService<TestInvitationEmailSender>();
         var inviteToken = sender.TokenFor("invitee@example.test");
         Assert.False(string.IsNullOrWhiteSpace(inviteToken));
-        Assert.DoesNotContain("inviteToken", await invitation.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "inviteToken",
+            await invitation.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
 
         await using (var db = _factory.Db())
         {
