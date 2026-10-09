@@ -600,9 +600,6 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/pull-request", as
 {
     var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
     if (access is null) return ApiError(404, "project_not_found", "Proyecto no encontrado.");
-    if (access.Value.Role != ProjectRoles.Owner)
-        return ApiError(403, "owner_required", "Solo el owner puede actualizar pull requests.");
-
     var project = await db.Projects.SingleAsync(x => x.Id == projectId, ct);
     var task = await db.Tasks
         .Include(x => x.PullRequest)
@@ -612,6 +609,11 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/pull-request", as
 
     if (task is null)
         return ApiError(404, "task_not_found", "La tarea no existe en el proyecto.");
+
+    var canUpdatePr = access.Value.Role == ProjectRoles.Owner ||
+        task.AssignedUserId == access.Value.User.Id;
+    if (!canUpdatePr)
+        return ApiError(403, "assignee_required", "Solo el usuario asignado o el owner puede actualizar el PR de esta tarea.");
 
     var url = request.Url?.Trim();
     var sourceBranch = request.SourceBranch?.Trim();
