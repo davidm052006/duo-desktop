@@ -167,6 +167,36 @@ public sealed class GitWorkspaceService(IExecutableLocator executables, ILogger<
             behind);
     }
 
+    public async Task<WorkspaceStatus> ApplyPatchAsync(
+        string workspaceId,
+        string patch,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(patch))
+            throw GitWorkspaceException.Invalid("El parche está vacío.");
+        if (patch.Length > 2_000_000)
+            throw GitWorkspaceException.Invalid("El parche supera el límite de 2 MB.");
+
+        var normalized = patch.Trim();
+        if (!normalized.Contains("diff --git ", StringComparison.Ordinal) &&
+            !(normalized.Contains("\n--- ", StringComparison.Ordinal) &&
+              normalized.Contains("\n+++ ", StringComparison.Ordinal)))
+            throw GitWorkspaceException.Invalid("El resultado no parece un parche unified diff válido.");
+
+        var ws = await RequireWorkspaceAsync(workspaceId, ct);
+        var temp = Path.Combine(Path.GetTempPath(), $"duo-{Guid.NewGuid():N}.patch");
+        try
+        {
+            await File.WriteAllTextAsync(temp, normalized + Environment.NewLine, new UTF8Encoding(false), ct);
+            await GitAsync(ws.WorktreePath, ["apply", "--whitespace=nowarn", "--recount", temp], ct);
+            return await StatusAsync(workspaceId, ct);
+        }
+        finally
+        {
+            try { File.Delete(temp); } catch (IOException) { }
+        }
+    }
+
     public async Task<CommitResult> CommitAsync(
         string workspaceId,
         IReadOnlyList<string> files,
