@@ -708,7 +708,9 @@ class _DialogTareaState extends State<_DialogTarea> {
     _rama = TextEditingController(text: tarea?.rama ?? '');
     _asignado = tarea?.assignedUserId;
     _provider = tarea?.workProvider ?? 'chatgpt';
-    _capacidades = _duo.capacidadesAgentes();
+    _capacidades = _duo.capacidadesAgentes().catchError(
+      (_) => const <CapacidadAgenteLocal>[],
+    );
   }
 
   @override
