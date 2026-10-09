@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config_cloud.dart';
 import '../pantallas/marco_app.dart';
 import '../tema/paleta.dart';
 
@@ -81,13 +82,16 @@ class _PantallaLoginState extends State<_PantallaLogin> {
         final respuesta = await Supabase.instance.client.auth.signUp(
           email: email,
           password: password,
+          emailRedirectTo: ConfigCloud.configurado
+              ? ConfigCloud.endpoint('/auth/confirmed').toString()
+              : null,
         );
 
         if (!mounted) return;
         if (respuesta.session == null) {
           setState(() {
             _mensaje =
-                'Cuenta creada. Revisa tu email para confirmar el acceso.';
+                'Cuenta creada. Revisa tu email, confirma el acceso y luego vuelve a Duo Desktop para iniciar sesión.';
           });
         }
       } else {
