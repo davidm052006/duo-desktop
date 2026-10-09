@@ -261,15 +261,7 @@ class _Cabecera extends StatelessWidget {
           label: const Text('Sincronizar'),
         ),
         const SizedBox(width: 10),
-        // Editar una tarea es escritura: el servicio es de solo lectura.
-        Tooltip(
-          message: 'Editar tareas desde la app llega en la Fase 2. Hoy: duo "lo que quieras"',
-          child: FilledButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Nueva tarea · Fase 2'),
-          ),
-        ),
+
       ],
     );
   }
