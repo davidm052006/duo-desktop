@@ -417,9 +417,6 @@ jobs:
           $installer = Get-ChildItem "$out\DuoDesktop-Setup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $installer) { throw "DuoDesktop installer not found after Inno Setup" }
 
-          }
-            Write-Host "Verified signed artifact: $target"
-          }
           Get-ChildItem $out
 
       - name: Upload Windows artifact
