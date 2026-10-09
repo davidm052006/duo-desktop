@@ -54,9 +54,9 @@ public sealed class CloudApiTests : IClassFixture<CloudApiFactory>
 
     [Theory]
     [InlineData("owner", true, true)]
-    [InlineData("editor", true, false)]
+    [InlineData("editor", false, false)]
     [InlineData("viewer", false, false)]
-    public async Task Roles_enforce_write_and_invite(string role, bool canWrite, bool canInvite)
+    public async Task Roles_enforce_owner_task_control_and_invites(string role, bool canWrite, bool canInvite)
     {
         var project = await CreateProjectAsync("owner-role", "owner-role@example.test", $"roles-{role}");
         await AddMemberAsync(project.id, $"{role}-user", $"{role}@example.test", role);
@@ -132,20 +132,52 @@ public sealed class CloudApiTests : IClassFixture<CloudApiFactory>
     }
 
     [Fact]
-    public async Task Task_upsert_is_unique_and_editor_can_update_but_foreign_project_cannot()
+    public async Task Task_upsert_is_owner_only_and_assignee_can_start_and_submit()
     {
         var project = await CreateProjectAsync("task-owner", "task-owner@example.test", "tasks-a");
-        var editor = "task-editor";
-        await AddMemberAsync(project.id, editor, "editor-task@example.test", "editor");
-        var client = _factory.Client(editor, "editor-task@example.test");
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync($"/api/projects/{project.id}/tasks/upsert", TaskRequest("T-1", "first"))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync($"/api/projects/{project.id}/tasks/upsert", TaskRequest("T-1", "updated"))).StatusCode);
-        await using var db = _factory.Db();
-        Assert.Single(await db.Tasks.Where(x => x.ProjectId == project.id && x.ExternalId == "T-1").ToListAsync());
-        Assert.Equal("updated", (await db.Tasks.SingleAsync(x => x.ProjectId == project.id)).Title);
+        await AddMemberAsync(project.id, "task-editor", "editor-task@example.test", "editor");
+        var editorId = await UserIdAsync("task-editor");
+        var owner = _factory.Client("task-owner", "task-owner@example.test");
+        var editor = _factory.Client("task-editor", "editor-task@example.test");
 
-        var other = await CreateProjectAsync("other-owner", "other-owner@example.test", "tasks-b");
-        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync($"/api/projects/{other.id}/tasks/upsert", TaskRequest("T-2"))).StatusCode);
+        var created = await owner.PostAsJsonAsync(
+            $"/api/projects/{project.id}/tasks/upsert",
+            new
+            {
+                externalId = "T-1",
+                title = "first",
+                ownerAgent = "codex",
+                status = "pending",
+                branch = "feature/t-1",
+                assignedUserId = editorId,
+                workProvider = "codex",
+            });
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await editor.PostAsJsonAsync(
+                $"/api/projects/{project.id}/tasks/upsert",
+                TaskRequest("T-1", "updated"))).StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await editor.PostAsync(
+                $"/api/projects/{project.id}/tasks/T-1/start",
+                null)).StatusCode);
+        Assert.Equal("in_progress", await TaskStatusAsync(project.id, "T-1"));
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await editor.PostAsJsonAsync(
+                $"/api/projects/{project.id}/tasks/T-1/submit",
+                new { result = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -0,0 +1 @@\n+ok" })).StatusCode);
+        Assert.Equal("in_review", await TaskStatusAsync(project.id, "T-1"));
+
+        await using var db = _factory.Db();
+        Assert.Contains(
+            await db.TaskEvents.Where(x => x.ProjectId == project.id).Select(x => x.Type).ToListAsync(),
+            type => type == "submission_collected");
     }
 
     [Fact]
@@ -183,7 +215,7 @@ public sealed class CloudApiTests : IClassFixture<CloudApiFactory>
         var assigned = await owner.PostAsJsonAsync($"/api/projects/{project.id}/tasks/upsert",
             new { externalId = "T-9", title = "workflow", ownerAgent = "codex", status = "pending", branch = "codex/t-9", assignedUserId = editorId, workProvider = "codex" });
         Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await editor.PostAsJsonAsync($"/api/projects/{project.id}/tasks/upsert", TaskRequest("T-9", "working"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await editor.PostAsync($"/api/projects/{project.id}/tasks/T-9/start", null)).StatusCode);
 
         var review = new { gitHubNumber = 9, url = "https://github.test/duo/workflow/pull/9", sourceBranch = "codex/t-9", targetBranch = "develop", state = "open", reviewState = "approved", mergedAt = (DateTimeOffset?)null, mergedByLogin = (string?)null };
         Assert.Equal(HttpStatusCode.OK, (await editor.PostAsJsonAsync($"/api/projects/{project.id}/tasks/T-9/pull-request", review)).StatusCode);
