@@ -290,6 +290,88 @@ public sealed class GitWorkspaceService(IExecutableLocator executables, ILogger<
         return ParsePullRequest(json.RootElement);
     }
 
+    public async Task<PullRequestCiStatus> PullRequestCiAsync(
+        string workspaceId,
+        int number,
+        CancellationToken ct)
+    {
+        if (number <= 0) throw GitWorkspaceException.Invalid("Número de PR inválido.");
+        var ws = await RequireWorkspaceAsync(workspaceId, ct);
+        var state = await LoadAsync(ct);
+        var repo = state.Repositories[ws.ProjectId];
+
+        var runs = await GhJsonAsync(
+            ws.WorktreePath,
+            ["run", "list", "--repo", repo.RepositoryFullName, "--branch", ws.Branch,
+             "--limit", "1", "--json", "databaseId,status,conclusion,url,workflowName"],
+            ct);
+
+        if (runs.RootElement.ValueKind != JsonValueKind.Array ||
+            runs.RootElement.GetArrayLength() == 0)
+            return new PullRequestCiStatus("pending", null, null, null);
+
+        var run = runs.RootElement[0];
+        var runId = run.GetProperty("databaseId").GetInt64();
+        var status = run.TryGetProperty("status", out var statusNode)
+            ? statusNode.GetString() ?? ""
+            : "";
+        var conclusion = run.TryGetProperty("conclusion", out var conclusionNode)
+            ? conclusionNode.GetString()
+            : null;
+        var url = run.TryGetProperty("url", out var urlNode)
+            ? urlNode.GetString()
+            : null;
+
+        if (!string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase))
+            return new PullRequestCiStatus("pending", runId, url, null);
+
+        if (string.Equals(conclusion, "success", StringComparison.OrdinalIgnoreCase))
+            return new PullRequestCiStatus("passed", runId, url, null);
+
+        var logs = await RunAsync(
+            RequireExecutable("gh"),
+            ws.WorktreePath,
+            ["run", "view", runId.ToString(), "--repo", repo.RepositoryFullName, "--log-failed"],
+            ct);
+        var failureLog = (logs.Stdout + Environment.NewLine + logs.Stderr).Trim();
+        if (failureLog.Length > 100_000) failureLog = failureLog[^100_000..];
+
+        return new PullRequestCiStatus(
+            "failed",
+            runId,
+            url,
+            failureLog.Length == 0 ? $"CI terminó con {conclusion ?? "fallo"}." : failureLog);
+    }
+
+    public async Task<PullRequestInfo> MergePullRequestAsync(
+        string workspaceId,
+        int number,
+        CancellationToken ct)
+    {
+        if (number <= 0) throw GitWorkspaceException.Invalid("Número de PR inválido.");
+        var ws = await RequireWorkspaceAsync(workspaceId, ct);
+        var state = await LoadAsync(ct);
+        var repo = state.Repositories[ws.ProjectId];
+
+        var ci = await PullRequestCiAsync(workspaceId, number, ct);
+        if (ci.State != "passed")
+            throw GitWorkspaceException.Conflict("El CI todavía no está aprobado.");
+
+        var merge = await RunAsync(
+            RequireExecutable("gh"),
+            ws.WorktreePath,
+            ["pr", "merge", number.ToString(), "--repo", repo.RepositoryFullName,
+             "--merge", "--delete-branch"],
+            ct);
+        if (merge.ExitCode != 0)
+            throw GitWorkspaceException.CommandFailed(
+                merge.Stderr.Trim().Length == 0
+                    ? "GitHub no pudo completar el merge."
+                    : merge.Stderr.Trim());
+
+        return await PullRequestStatusAsync(workspaceId, number, ct);
+    }
+
     public async Task LaunchAgentAsync(string workspaceId, string provider, CancellationToken ct)
     {
         if (provider is not ("codex" or "claude" or "gemini"))
@@ -547,6 +629,12 @@ public sealed record PullRequestInfo(
     string HeadRefName,
     string BaseRefName,
     DateTimeOffset? MergedAt);
+
+public sealed record PullRequestCiStatus(
+    string State,
+    long? RunId,
+    string? Url,
+    string? FailureLog);
 
 public sealed record ConfigureRepositoryRequest(
     string? ProjectId,
