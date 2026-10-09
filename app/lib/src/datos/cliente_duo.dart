@@ -135,6 +135,28 @@ class PullRequestLocal {
       );
 }
 
+class EstadoCiPullRequest {
+  const EstadoCiPullRequest({
+    required this.estado,
+    required this.runId,
+    required this.url,
+    required this.logFallo,
+  });
+
+  final String estado;
+  final int? runId;
+  final String? url;
+  final String? logFallo;
+
+  factory EstadoCiPullRequest.desdeJson(Map<String, dynamic> json) =>
+      EstadoCiPullRequest(
+        estado: '${json['state'] ?? 'pending'}',
+        runId: json['runId'] as int?,
+        url: json['url'] == null ? null : '${json['url']}',
+        logFallo: json['failureLog'] == null ? null : '${json['failureLog']}',
+      );
+}
+
 class ClienteDuo {
   ClienteDuo({ConfigDuo? config, http.Client? transporte})
     : _config = config ?? ConfigDuo.desdeEntorno,
@@ -479,6 +501,28 @@ class ClienteDuo {
       'POST',
       '/git/workspaces/pr',
       body: {'workspaceId': workspaceId, 'title': titulo, 'body': cuerpo},
+    );
+    return PullRequestLocal.desdeJson(json);
+  }
+
+  Future<EstadoCiPullRequest> estadoCiPullRequest({
+    required String workspaceId,
+    required int numero,
+  }) async {
+    final json = await _jsonRequest(
+      'GET',
+      '/git/workspaces/${Uri.encodeComponent(workspaceId)}/pr/$numero/ci',
+    );
+    return EstadoCiPullRequest.desdeJson(json);
+  }
+
+  Future<PullRequestLocal> mergePullRequest({
+    required String workspaceId,
+    required int numero,
+  }) async {
+    final json = await _jsonRequest(
+      'POST',
+      '/git/workspaces/${Uri.encodeComponent(workspaceId)}/pr/$numero/merge',
     );
     return PullRequestLocal.desdeJson(json);
   }
