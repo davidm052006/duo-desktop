@@ -286,6 +286,29 @@ app.MapGet("/git/workspaces/{workspaceId}/status", async (
     }
 });
 
+app.MapPost("/git/workspaces/apply-patch", async (
+    HttpContext ctx,
+    ApplyPatchWorkspaceRequest? request,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        var status = await workspaces.ApplyPatchAsync(
+            request?.WorkspaceId ?? "",
+            request?.Patch ?? "",
+            ct);
+        return Results.Ok(status);
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
 app.MapPost("/git/workspaces/commit", async (
     HttpContext ctx,
     CommitWorkspaceRequest? request,
