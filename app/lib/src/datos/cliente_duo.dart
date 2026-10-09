@@ -422,6 +422,18 @@ class ClienteDuo {
     return EstadoWorkspaceLocal.desdeJson(json);
   }
 
+  Future<EstadoWorkspaceLocal> aplicarParcheWorkspace({
+    required String workspaceId,
+    required String patch,
+  }) async {
+    final json = await _jsonRequest(
+      'POST',
+      '/git/workspaces/apply-patch',
+      body: {'workspaceId': workspaceId, 'patch': patch},
+    );
+    return EstadoWorkspaceLocal.desdeJson(json);
+  }
+
   Future<String> commitWorkspace({
     required String workspaceId,
     required List<String> archivos,
