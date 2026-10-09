@@ -94,6 +94,24 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
     if (creada == true && mounted) setState(_recargar);
   }
 
+  Future<void> _editarTarea(
+    TareaCloud tarea,
+    List<MiembroCloud> miembros,
+  ) async {
+    final actualizada = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DialogTarea(
+        cloud: _cloud,
+        projectId: widget.proyecto.id,
+        ramaObjetivo: widget.proyecto.ramaObjetivo,
+        miembros: miembros,
+        tarea: tarea,
+      ),
+    );
+    if (actualizada == true && mounted) setState(_recargar);
+  }
+
   Future<void> _editarPullRequest(TareaCloud tarea) async {
     final actualizado = await showDialog<bool>(
       context: context,
@@ -114,8 +132,7 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
     final paleta = context.paleta;
     final textos = Theme.of(context).textTheme;
     final esOwner = widget.proyecto.rol == 'owner';
-    final puedeEditar =
-        widget.proyecto.rol == 'owner' || widget.proyecto.rol == 'editor';
+    final puedeEditar = esOwner;
 
     return Column(
       children: [
@@ -223,6 +240,9 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
                   crear: miembrosSnap.hasData
                       ? () => _crearTarea(miembrosSnap.data!)
                       : null,
+                  editarTarea: puedeEditar && miembrosSnap.hasData
+                      ? (tarea) => _editarTarea(tarea, miembrosSnap.data!)
+                      : null,
                   editarPullRequest: puedeEditar ? _editarPullRequest : null,
                   alCambiarCloud: () {
                     if (mounted) setState(_recargar);
@@ -309,6 +329,7 @@ class _VistaTareas extends StatelessWidget {
     required this.cloud,
     required this.puedeEditar,
     required this.crear,
+    required this.editarTarea,
     required this.editarPullRequest,
     required this.alCambiarCloud,
   });
@@ -318,6 +339,7 @@ class _VistaTareas extends StatelessWidget {
   final ClienteCloud cloud;
   final bool puedeEditar;
   final VoidCallback? crear;
+  final ValueChanged<TareaCloud>? editarTarea;
   final ValueChanged<TareaCloud>? editarPullRequest;
   final VoidCallback alCambiarCloud;
 
@@ -364,6 +386,9 @@ class _VistaTareas extends StatelessWidget {
                       proyecto: proyecto,
                       cloud: cloud,
                       alCambiarCloud: alCambiarCloud,
+                      editarTarea: editarTarea == null
+                          ? null
+                          : () => editarTarea!(tarea),
                       editarPullRequest: editarPullRequest == null
                           ? null
                           : () => editarPullRequest!(tarea),
@@ -432,6 +457,7 @@ class _TarjetaTarea extends StatelessWidget {
     required this.proyecto,
     required this.cloud,
     required this.alCambiarCloud,
+    this.editarTarea,
     this.editarPullRequest,
   });
 
@@ -439,6 +465,7 @@ class _TarjetaTarea extends StatelessWidget {
   final ProyectoCloud proyecto;
   final ClienteCloud cloud;
   final VoidCallback alCambiarCloud;
+  final VoidCallback? editarTarea;
   final VoidCallback? editarPullRequest;
 
   @override
@@ -474,6 +501,12 @@ class _TarjetaTarea extends StatelessWidget {
                   'PR #${tarea.pullRequest!.numero}',
                   tono: paleta.acento,
                   mono: true,
+                ),
+              if (editarTarea != null)
+                ActionChip(
+                  avatar: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Editar tarea'),
+                  onPressed: editarTarea,
                 ),
               if (editarPullRequest != null)
                 ActionChip(
@@ -642,21 +675,23 @@ class _DialogTarea extends StatefulWidget {
     required this.projectId,
     required this.ramaObjetivo,
     required this.miembros,
+    this.tarea,
   });
 
   final ClienteCloud cloud;
   final String projectId;
   final String ramaObjetivo;
   final List<MiembroCloud> miembros;
+  final TareaCloud? tarea;
 
   @override
   State<_DialogTarea> createState() => _DialogTareaState();
 }
 
 class _DialogTareaState extends State<_DialogTarea> {
-  final _id = TextEditingController();
-  final _titulo = TextEditingController();
-  final _rama = TextEditingController();
+  late final TextEditingController _id;
+  late final TextEditingController _titulo;
+  late final TextEditingController _rama;
   final _duo = ClienteDuo();
   String? _asignado;
   String _provider = 'chatgpt';
@@ -667,6 +702,12 @@ class _DialogTareaState extends State<_DialogTarea> {
   @override
   void initState() {
     super.initState();
+    final tarea = widget.tarea;
+    _id = TextEditingController(text: tarea?.externalId ?? '');
+    _titulo = TextEditingController(text: tarea?.titulo ?? '');
+    _rama = TextEditingController(text: tarea?.rama ?? '');
+    _asignado = tarea?.assignedUserId;
+    _provider = tarea?.workProvider ?? 'chatgpt';
     _capacidades = _duo.capacidadesAgentes();
   }
 
@@ -749,7 +790,7 @@ class _DialogTareaState extends State<_DialogTarea> {
   @override
   Widget build(BuildContext context) => AlertDialog(
         backgroundColor: context.paleta.panel,
-        title: const Text('Nueva tarea compartida'),
+        title: Text(widget.tarea == null ? 'Nueva tarea compartida' : 'Editar tarea'),
         content: SizedBox(
           width: 580,
           child: SingleChildScrollView(
@@ -757,6 +798,7 @@ class _DialogTareaState extends State<_DialogTarea> {
               children: [
                 TextField(
                   controller: _id,
+                  readOnly: widget.tarea != null,
                   decoration: const InputDecoration(
                     labelText: 'ID',
                     hintText: 'T-052',
@@ -841,7 +883,11 @@ class _DialogTareaState extends State<_DialogTarea> {
           FilledButton.icon(
             onPressed: _enviando ? null : _crear,
             icon: const Icon(Icons.add_task, size: 16),
-            label: Text(_enviando ? 'Creando…' : 'Crear tarea'),
+            label: Text(
+              _enviando
+                  ? (widget.tarea == null ? 'Creando…' : 'Guardando…')
+                  : (widget.tarea == null ? 'Crear tarea' : 'Guardar cambios'),
+            ),
           ),
         ],
       );
