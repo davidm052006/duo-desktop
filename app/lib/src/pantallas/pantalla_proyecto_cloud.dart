@@ -12,11 +12,13 @@ class PantallaProyectoCloud extends StatefulWidget {
     required this.proyecto,
     required this.volver,
     this.cloud,
+    this.initialTab = 0,
   });
 
   final ProyectoCloud proyecto;
   final VoidCallback volver;
   final ClienteCloud? cloud;
+  final int initialTab;
 
   @override
   State<PantallaProyectoCloud> createState() => _PantallaProyectoCloudState();
@@ -35,7 +37,11 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
     super.initState();
     _administraCloud = widget.cloud == null;
     _cloud = widget.cloud ?? ClienteCloud();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 2),
+    );
     _recargar();
   }
 
