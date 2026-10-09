@@ -20,6 +20,7 @@ import 'pantalla_github.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_inicio.dart';
 import 'pantalla_personalizacion.dart';
+import 'pantalla_proyecto_cloud.dart';
 import 'pantalla_proyectos.dart';
 import 'pantalla_preguntas.dart';
 import 'pantalla_tablero.dart';
@@ -240,7 +241,8 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                               nombre == 'Chats' ||
                               nombre == 'Personalización' ||
                               nombre == 'Configuración' ||
-                              (nombre == 'Tablero' && proyectoCloud != null);
+                              ((nombre == 'Tablero' || nombre == 'Tareas') &&
+                                  proyectoCloud != null);
 
                           if (estado.sinProyectoLocal && !libreDeBoard) {
                             return _ProyectoLocalPendiente(
@@ -255,7 +257,17 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                           return switch (nombre) {
                             'Proyectos' => const PantallaProyectos(),
                             'Tablero' => const PantallaTablero(),
-                            'Tareas' => const PantallaTareas(),
+                            'Tareas' => proyectoCloud == null
+                                ? const PantallaTareas()
+                                : PantallaProyectoCloud(
+                                    proyecto: proyectoCloud,
+                                    initialTab: 1,
+                                    volver: () => setState(
+                                      () => _activo = destinos.indexWhere(
+                                        (d) => d.nombre == 'Proyectos',
+                                      ),
+                                    ),
+                                  ),
                             'Agentes' => const PantallaAgentes(),
                             'Chats' => const PantallaChats(),
                             'Preguntas' => const PantallaPreguntas(),
