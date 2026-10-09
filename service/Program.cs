@@ -400,6 +400,46 @@ app.MapPost("/git/workspaces/pr", async (
     }
 });
 
+app.MapGet("/git/workspaces/{workspaceId}/pr/{number:int}/ci", async (
+    HttpContext ctx,
+    string workspaceId,
+    int number,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(await workspaces.PullRequestCiAsync(workspaceId, number, ct));
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
+app.MapPost("/git/workspaces/{workspaceId}/pr/{number:int}/merge", async (
+    HttpContext ctx,
+    string workspaceId,
+    int number,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+
+    try
+    {
+        return Results.Ok(await workspaces.MergePullRequestAsync(workspaceId, number, ct));
+    }
+    catch (GitWorkspaceException e)
+    {
+        return Error(e.Status, e.Code, e.Message);
+    }
+});
+
 app.MapGet("/git/workspaces/{workspaceId}/pr/{number:int}", async (
     HttpContext ctx,
     string workspaceId,
