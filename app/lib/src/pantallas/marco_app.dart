@@ -28,13 +28,12 @@ import 'pantalla_terminal.dart';
 import 'pantalla_visualizaciones.dart';
 
 class Destino {
-  const Destino(this.nombre, this.icono, {this.fase});
+  const Destino(this.nombre, this.icono);
 
   final String nombre;
   final IconData icono;
-  final int? fase;
 
-  bool get listo => fase == null;
+  bool get listo => true;
 }
 
 const destinosTrabajo = [
@@ -726,8 +725,6 @@ class _Entrada extends StatelessWidget {
                 ),
               ),
               if (aviso != null) Insignia(aviso!, tono: paleta.acento),
-              if (aviso == null && destino.fase != null)
-                MarcaFase(destino.fase!),
             ],
           ),
         ),
