@@ -6,6 +6,7 @@ using DuoDesktop.Cloud.Api;
 using DuoDesktop.Cloud.Auth;
 using DuoDesktop.Cloud.Data;
 using DuoDesktop.Cloud.Domain;
+using DuoDesktop.Cloud.Email;
 using DuoDesktop.Cloud.Realtime;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
@@ -25,6 +26,7 @@ builder.Services.AddDbContext<DuoCloudDbContext>(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUser>();
+builder.Services.AddSingleton<IInvitationEmailSender, SmtpInvitationEmailSender>();
 builder.Services.AddSignalR();
 
 builder.Services
@@ -192,6 +194,7 @@ app.MapPost("/api/projects/{projectId:guid}/invitations", async (
     InviteMemberRequest request,
     DuoCloudDbContext db,
     CurrentUser currentUser,
+    IInvitationEmailSender emailSender,
     CancellationToken ct) =>
 {
     var access = await ProjectAccessAsync(db, currentUser, projectId, ct);
@@ -226,7 +229,29 @@ app.MapPost("/api/projects/{projectId:guid}/invitations", async (
     db.ProjectInvitations.Add(invitation);
     await db.SaveChangesAsync(ct);
 
-    // El token crudo se devuelve una sola vez. La DB solo conserva su hash.
+    var projectName = await db.Projects
+        .Where(x => x.Id == projectId)
+        .Select(x => x.Name)
+        .SingleAsync(ct);
+
+    try
+    {
+        await emailSender.SendAsync(
+            email!,
+            rawToken,
+            projectName,
+            role!,
+            invitation.ExpiresAt,
+            ct);
+    }
+    catch (InvitationEmailException e)
+    {
+        db.ProjectInvitations.Remove(invitation);
+        await db.SaveChangesAsync(ct);
+        return ApiError(503, e.Code, e.Message);
+    }
+
+    // El token crudo viaja únicamente por correo. La API y la DB no lo exponen.
     return Results.Created($"/api/invitations/{invitation.Id}", new
     {
         invitation.Id,
@@ -234,7 +259,7 @@ app.MapPost("/api/projects/{projectId:guid}/invitations", async (
         email,
         role,
         invitation.ExpiresAt,
-        inviteToken = rawToken,
+        emailSent = true,
     });
 }).RequireAuthorization();
 
