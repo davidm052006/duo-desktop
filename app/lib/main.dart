@@ -11,6 +11,7 @@ import 'src/auth/config_supabase.dart';
 import 'src/auth/puerta_auth.dart';
 import 'src/actualizaciones/estado_actualizacion.dart';
 import 'src/estado/estado_tablero.dart';
+import 'src/estado/estado_proyecto_activo.dart';
 import 'src/pantallas/fondo_video_config.dart';
 import 'src/pantallas/marco_app.dart';
 import 'src/tema/tema.dart';
@@ -44,6 +45,7 @@ class AppDuo extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => EstadoTablero()..arranca()),
+        ChangeNotifierProvider(create: (_) => EstadoProyectoActivo()),
         ChangeNotifierProvider(create: (_) => EstadoActualizacion()..inicia()),
       ],
       child: ValueListenableBuilder<double>(
