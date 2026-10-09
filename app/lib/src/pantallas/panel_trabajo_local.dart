@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../datos/cliente_cloud.dart';
 import '../datos/cliente_duo.dart';
@@ -33,11 +36,13 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
   String? _error;
   bool _ocupado = false;
   late Future<UsuarioCloudActual> _usuario;
+  late Future<List<CapacidadAgenteLocal>> _capacidades;
 
   @override
   void initState() {
     super.initState();
     _usuario = widget.cloud.usuarioActual();
+    _capacidades = _duo.capacidadesAgentes();
     _cargarRepo();
   }
 
@@ -84,15 +89,9 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
     _workspace = workspace;
 
     if (widget.tarea.estado == 'pending') {
-      await widget.cloud.upsertTarea(
+      await widget.cloud.iniciarTarea(
         projectId: widget.proyecto.id,
         externalId: widget.tarea.externalId,
-        titulo: widget.tarea.titulo,
-        ownerAgent: widget.tarea.ownerAgent,
-        estado: 'in_progress',
-        rama: workspace.rama,
-        assignedUserId: widget.tarea.assignedUserId,
-        workProvider: widget.tarea.workProvider,
       );
       widget.alCambiarCloud();
     }
@@ -130,6 +129,15 @@ No hagas force-push.
 No modifiques credenciales.
 ''';
 
+  String _promptFallback(WorkspaceLocal ws) => '''
+${_contexto(ws)}
+
+No tienes acceso directo al workspace desde este chat. Resuelve la tarea y
+devuelve SOLO un parche unified diff aplicable con `git apply`.
+Debe incluir todos los cambios necesarios y no debe incluir explicaciones
+fuera del parche. No incluyas secretos ni credenciales.
+''';
+
   Future<void> _copiarContexto() async {
     await _accion(() async {
       final ws = await _asegurarWorkspace();
@@ -144,13 +152,33 @@ No modifiques credenciales.
 
   Future<void> _abrirAgente() async {
     final provider = widget.tarea.workProvider;
+    final ws = await _asegurarWorkspace();
+
     if (provider == 'chatgpt' || provider == 'grok') {
-      await _copiarContexto();
+      await Clipboard.setData(ClipboardData(text: _promptFallback(ws)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Contexto copiado. Abre ${provider == 'chatgpt' ? 'ChatGPT' : 'Grok'} en Chats.',
+              'Prompt copiado. Abre ${provider == 'chatgpt' ? 'ChatGPT' : 'Grok'} en Chats.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final capacidades = await _capacidades;
+    final disponible = capacidades.any(
+      (capacidad) => capacidad.provider == provider && capacidad.disponible,
+    );
+    if (!disponible) {
+      await Clipboard.setData(ClipboardData(text: _promptFallback(ws)));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ese agente no está instalado. Copié un prompt para usarlo en un chat.',
             ),
           ),
         );
@@ -159,12 +187,165 @@ No modifiques credenciales.
     }
 
     await _accion(() async {
-      final ws = await _asegurarWorkspace();
       await _duo.lanzarAgenteLocal(
         workspaceId: ws.id,
         provider: provider,
       );
     });
+  }
+
+  Future<void> _recogerResultado() async {
+    final data = await Clipboard.getData('text/plain');
+    final resultado = data?.text?.trim() ?? '';
+    if (resultado.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('El portapapeles está vacío.')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DialogConfirmarResultado(resultado: resultado),
+    );
+    if (confirmado != true || !mounted) return;
+
+    final key = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _DialogGeminiKey(),
+    );
+    if (key == null || key.trim().isEmpty || !mounted) return;
+
+    await _accion(() async {
+      final revision = await _revisarConGemini(key.trim(), resultado);
+      if (!revision.aprobado) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Gemini pidió correcciones'),
+              content: SelectableText(revision.detalle),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      final ws = await _asegurarWorkspace();
+      _estado = await _duo.aplicarParcheWorkspace(
+        workspaceId: ws.id,
+        patch: resultado,
+      );
+      final archivos = _estado!.archivos;
+      if (archivos.isEmpty) {
+        throw const FalloDuo(
+          'empty_patch',
+          'El parche fue aceptado pero no produjo cambios.',
+        );
+      }
+
+      await _duo.commitWorkspace(
+        workspaceId: ws.id,
+        archivos: archivos,
+        mensaje: 'feat(${widget.tarea.externalId}): ${widget.tarea.titulo}',
+      );
+      await _duo.pushWorkspace(ws.id);
+      final pr = await _duo.crearOEncontrarPullRequest(
+        workspaceId: ws.id,
+        titulo: '${widget.tarea.externalId}: ${widget.tarea.titulo}',
+        cuerpo: 'Resultado recogido y revisado por Duo para ${widget.tarea.externalId}.',
+      );
+      await _sincronizarPr(pr);
+      await widget.cloud.entregarTarea(
+        projectId: widget.proyecto.id,
+        externalId: widget.tarea.externalId,
+        resultado: resultado,
+      );
+      widget.alCambiarCloud();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Resultado aprobado. PR #${pr.numero} creado.')),
+        );
+      }
+    });
+  }
+
+  Future<_RevisionGemini> _revisarConGemini(String apiKey, String resultado) async {
+    final uri = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',
+    );
+    final prompt = '''
+Revisa rápidamente este resultado para una tarea de software.
+
+Proyecto: ${widget.proyecto.nombre}
+Tarea: ${widget.tarea.externalId} - ${widget.tarea.titulo}
+Rama objetivo: ${widget.proyecto.ramaObjetivo}
+
+El resultado debe ser un unified diff coherente, limitado a la tarea y sin
+secretos. Responde en la primera línea exactamente APROBADO o RECHAZADO.
+Después explica brevemente el motivo.
+
+RESULTADO:
+$resultado
+''';
+
+    final response = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: jsonEncode({
+        'contents': [
+          {
+            'parts': [
+              {'text': prompt}
+            ]
+          }
+        ],
+        'generationConfig': {
+          'temperature': 0.1,
+          'maxOutputTokens': 300,
+        },
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw FalloDuo(
+        'gemini_review_failed',
+        'Gemini respondió ${response.statusCode}. Revisa la clave y su cuota.',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    final candidates = decoded is Map<String, dynamic> ? decoded['candidates'] : null;
+    final first = candidates is List && candidates.isNotEmpty ? candidates.first : null;
+    final content = first is Map ? first['content'] : null;
+    final parts = content is Map ? content['parts'] : null;
+    final text = parts is List && parts.isNotEmpty && parts.first is Map
+        ? '${(parts.first as Map)['text'] ?? ''}'.trim()
+        : '';
+    if (text.isEmpty) {
+      throw const FalloDuo(
+        'gemini_review_empty',
+        'Gemini no devolvió una revisión utilizable.',
+      );
+    }
+    return _RevisionGemini(
+      text.toUpperCase().startsWith('APROBADO'),
+      text,
+    );
   }
 
   Future<void> _commit() async {
@@ -313,6 +494,28 @@ No modifiques credenciales.
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 const SizedBox(height: 12),
+                FutureBuilder<List<CapacidadAgenteLocal>>(
+                  future: _capacidades,
+                  builder: (context, caps) {
+                    final provider = widget.tarea.workProvider;
+                    final web = provider == 'chatgpt' || provider == 'grok';
+                    final disponible = web ||
+                        (caps.data ?? const <CapacidadAgenteLocal>[]).any(
+                          (x) => x.provider == provider && x.disponible,
+                        );
+                    return Text(
+                      disponible
+                          ? 'Agente asignado disponible en este equipo.'
+                          : 'Agente asignado no detectado: Duo usará un prompt para chat.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: disponible
+                                ? context.paleta.bien
+                                : context.paleta.aviso,
+                          ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -338,7 +541,12 @@ No modifiques credenciales.
                         esLocal ? Icons.terminal : Icons.chat_bubble_outline,
                         size: 16,
                       ),
-                      label: Text(esLocal ? 'Abrir agente' : 'Contexto para chat'),
+                      label: Text(esLocal ? 'Abrir agente / fallback chat' : 'Prompt para chat'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _ocupado ? null : _recogerResultado,
+                      icon: const Icon(Icons.content_paste_go_outlined, size: 16),
+                      label: const Text('Recoger resultado'),
                     ),
                   ],
                 ),
@@ -409,6 +617,113 @@ No modifiques credenciales.
             ),
           );
         },
+      );
+}
+
+class _RevisionGemini {
+  const _RevisionGemini(this.aprobado, this.detalle);
+  final bool aprobado;
+  final String detalle;
+}
+
+class _DialogConfirmarResultado extends StatelessWidget {
+  const _DialogConfirmarResultado({required this.resultado});
+  final String resultado;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Confirmar resultado recogido'),
+        content: SizedBox(
+          width: 760,
+          height: 520,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Duo leerá este contenido del portapapeles, lo revisará con Gemini y, '
+                'si se aprueba, intentará aplicarlo como unified diff.',
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: context.paleta.rejilla),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: SelectableText(
+                      resultado,
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirmar y revisar'),
+          ),
+        ],
+      );
+}
+
+class _DialogGeminiKey extends StatefulWidget {
+  const _DialogGeminiKey();
+
+  @override
+  State<_DialogGeminiKey> createState() => _DialogGeminiKeyState();
+}
+
+class _DialogGeminiKeyState extends State<_DialogGeminiKey> {
+  final _key = TextEditingController();
+
+  @override
+  void dispose() {
+    _key.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Revisión rápida con Gemini'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Pega tu clave de Gemini API. Duo la usa solo para esta revisión '
+                'y no la guarda.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _key,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: 'Gemini API key'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _key.text.trim()),
+            child: const Text('Revisar'),
+          ),
+        ],
       );
 }
 
