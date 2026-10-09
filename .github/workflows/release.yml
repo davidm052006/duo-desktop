@@ -420,8 +420,6 @@ jobs:
           }
             Write-Host "Verified signed artifact: $target"
           }
-
-          Copy-Item artifacts\signing\DuoDesktop-Test-Signing.cer "$out\DuoDesktop-Test-Signing.cer" -Force
           Get-ChildItem $out
 
       - name: Upload Windows artifact
