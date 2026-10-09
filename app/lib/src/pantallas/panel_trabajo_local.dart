@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -37,6 +38,9 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
   bool _ocupado = false;
   late Future<UsuarioCloudActual> _usuario;
   late Future<List<CapacidadAgenteLocal>> _capacidades;
+  Timer? _ciTimer;
+  String? _ultimoFalloCi;
+  bool _ciConsultando = false;
 
   @override
   void initState() {
@@ -44,12 +48,37 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
     _usuario = widget.cloud.usuarioActual();
     _capacidades = _duo.capacidadesAgentes();
     _cargarRepo();
+    _programarSeguimientoCi();
   }
 
   @override
   void dispose() {
+    _ciTimer?.cancel();
     _duo.cierra();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant PanelTrabajoLocal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tarea.pullRequest?.numero != widget.tarea.pullRequest?.numero ||
+        oldWidget.tarea.estado != widget.tarea.estado) {
+      _programarSeguimientoCi();
+    }
+  }
+
+  void _programarSeguimientoCi() {
+    _ciTimer?.cancel();
+    if (widget.proyecto.rol != 'owner' ||
+        widget.tarea.estado != 'in_review' ||
+        widget.tarea.pullRequest == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _comprobarCiYFinalizar());
+    _ciTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _comprobarCiYFinalizar(),
+    );
   }
 
   Future<void> _cargarRepo() async {
@@ -432,6 +461,77 @@ $resultado
     widget.alCambiarCloud();
   }
 
+  Future<void> _comprobarCiYFinalizar() async {
+    if (_ciConsultando ||
+        widget.proyecto.rol != 'owner' ||
+        widget.tarea.estado != 'in_review' ||
+        widget.tarea.pullRequest == null) {
+      return;
+    }
+
+    _ciConsultando = true;
+    try {
+      final ws = await _asegurarWorkspace();
+      final pr = widget.tarea.pullRequest!;
+      final ci = await _duo.estadoCiPullRequest(
+        workspaceId: ws.id,
+        numero: pr.numero,
+      );
+
+      if (ci.estado == 'pending') return;
+
+      if (ci.estado == 'failed') {
+        final log = ci.logFallo ?? 'CI falló sin log disponible.';
+        if (mounted) setState(() => _ultimoFalloCi = log);
+        await widget.cloud.publicarEvento(
+          projectId: widget.proyecto.id,
+          externalTaskId: widget.tarea.externalId,
+          tipo: 'ci_failed',
+          agente: widget.tarea.workProvider,
+          payloadJson: jsonEncode({
+            'runId': ci.runId,
+            'url': ci.url,
+            'log': log,
+          }),
+        );
+        widget.alCambiarCloud();
+        return;
+      }
+
+      if (ci.estado == 'passed') {
+        final merged = await _duo.mergePullRequest(
+          workspaceId: ws.id,
+          numero: pr.numero,
+        );
+        await widget.cloud.upsertPullRequest(
+          projectId: widget.proyecto.id,
+          externalId: widget.tarea.externalId,
+          githubNumber: merged.numero,
+          url: merged.url,
+          sourceBranch: merged.origen,
+          targetBranch: merged.destino,
+          state: merged.estado.toLowerCase(),
+          reviewState: 'approved',
+          mergedAt: merged.mergedAt,
+          mergedByLogin: 'duo-desktop',
+        );
+        _ciTimer?.cancel();
+        widget.alCambiarCloud();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('CI aprobado: PR fusionado y tarea completada.'),
+            ),
+          );
+        }
+      }
+    } on Object catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      _ciConsultando = false;
+    }
+  }
+
   Future<void> _accion(Future<void> Function() fn) async {
     if (_ocupado) return;
     setState(() {
@@ -463,7 +563,8 @@ $resultado
 
           final propia = widget.tarea.assignedUserId != null &&
               widget.tarea.assignedUserId == snapshot.data!.id;
-          if (!propia) {
+          final esOwner = widget.proyecto.rol == 'owner';
+          if (!propia && !esOwner) {
             return Text(
               widget.tarea.assignedUserId == null
                   ? 'Tarea sin asignar: acciones locales deshabilitadas.'
@@ -602,6 +703,36 @@ $resultado
                     for (final archivo in estado.archivos.take(8))
                       Mono(archivo, color: context.paleta.tintaSecundaria),
                   ],
+                ],
+                if (_ultimoFalloCi != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'CI falló. La tarea sigue en revisión:',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: context.paleta.critico),
+                  ),
+                  const SizedBox(height: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        _ultimoFalloCi!,
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ),
+                ],
+                if (esOwner &&
+                    widget.tarea.estado == 'in_review' &&
+                    widget.tarea.pullRequest != null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _ciConsultando ? null : _comprobarCiYFinalizar,
+                    icon: const Icon(Icons.fact_check_outlined, size: 16),
+                    label: const Text('Comprobar CI ahora'),
+                  ),
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
