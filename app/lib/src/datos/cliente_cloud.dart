@@ -347,6 +347,25 @@ class ClienteCloud {
     );
   }
 
+  Future<void> publicarEvento({
+    required String projectId,
+    required String externalTaskId,
+    required String tipo,
+    String? agente,
+    String? payloadJson,
+  }) async {
+    await _enviar(
+      'POST',
+      '/api/projects/$projectId/events',
+      cuerpo: {
+        'externalTaskId': externalTaskId,
+        'type': tipo,
+        'agent': agente,
+        'payloadJson': payloadJson,
+      },
+    );
+  }
+
   Future<void> upsertPullRequest({
     required String projectId,
     required String externalId,
