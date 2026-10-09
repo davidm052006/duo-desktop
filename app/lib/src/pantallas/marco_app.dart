@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../actualizaciones/estado_actualizacion.dart';
+import '../estado/estado_proyecto_activo.dart';
 import '../estado/estado_tablero.dart';
 import '../tema/paleta.dart';
 import '../widgets/fondo_cyber_animado.dart';
@@ -233,11 +234,14 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                       child: Builder(
                         builder: (context) {
                           final estado = context.watch<EstadoTablero>();
+                          final proyectoCloud =
+                              context.watch<EstadoProyectoActivo>().proyecto;
                           final nombre = destinos[_activo].nombre;
                           final libreDeBoard = nombre == 'Proyectos' ||
                               nombre == 'Chats' ||
                               nombre == 'Personalización' ||
-                              nombre == 'Configuración';
+                              nombre == 'Configuración' ||
+                              (nombre == 'Tablero' && proyectoCloud != null);
 
                           if (estado.sinProyectoLocal && !libreDeBoard) {
                             return _ProyectoLocalPendiente(
@@ -321,7 +325,8 @@ class _BarraMarca extends StatelessWidget {
   Widget build(BuildContext context) {
     final paleta = context.paleta;
     final estado = context.watch<EstadoTablero>();
-    final repo = estado.tablero?.proyecto?.repo ?? '';
+    final proyectoCloud = context.watch<EstadoProyectoActivo>().proyecto;
+    final repo = proyectoCloud?.repositorio ?? estado.tablero?.proyecto?.repo ?? '';
 
     return ValueListenableBuilder<double>(
       valueListenable: FondoVideoConfig.opacidadPaneles,
@@ -380,8 +385,6 @@ class _BarraMarca extends StatelessWidget {
                 Icon(Icons.terminal, size: 15),
                 SizedBox(width: 6),
                 Text('Terminal'),
-                SizedBox(width: 8),
-                MarcaFase(5),
               ],
             ),
           ],
