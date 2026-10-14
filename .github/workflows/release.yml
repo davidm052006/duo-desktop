@@ -217,6 +217,66 @@ jobs:
           EOF
           cat "${OUT_DIR}/latest-linux.json"
 
+      # Optional per-file delta against the immediately previous published
+      # release. If unavailable, keep the full verified update as fallback.
+      - name: Prepare incremental Linux launcher update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          OUT="artifacts/launcher-update"
+          CURRENT="$OUT/DuoDesktop-${VERSION}-linux-x64-update.zip"
+          mkdir -p artifacts/previous
+          PREVIOUS_TAG="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          if [[ -z "$PREVIOUS_TAG" ]]; then
+            echo "No prior release; full ZIP remains available."
+            exit 0
+          fi
+          if ! gh release download "$PREVIOUS_TAG" --repo "${{ github.repository }}" \
+                --pattern latest-linux.json --dir artifacts/previous; then
+            echo "Previous manifest unavailable; using full ZIP."
+            exit 0
+          fi
+          if ! gh release download "$PREVIOUS_TAG" --repo "${{ github.repository }}" \
+                --pattern 'DuoDesktop-*-linux-x64-update.zip' --dir artifacts/previous; then
+            echo "Previous ZIP unavailable; using full ZIP."
+            exit 0
+          fi
+          BASE="$(python3 -c 'import json;print(json.load(open("artifacts/previous/latest-linux.json"))["version"])')"
+          PREVIOUS="artifacts/previous/DuoDesktop-${BASE}-linux-x64-update.zip"
+          if [[ ! -f "$PREVIOUS" ]]; then
+            echo "Previous version mismatch; using full ZIP."
+            exit 0
+          fi
+          DELTA_NAME="DuoDesktop-${VERSION}-linux-x64-delta.zip"
+          DELTA="$OUT/$DELTA_NAME"
+          python3 scripts/make_incremental_update.py "$PREVIOUS" "$CURRENT" "$DELTA" "$BASE"
+          if (( $(stat -c %s "$DELTA") >= $(stat -c %s "$CURRENT") )); then
+            echo "Delta not smaller; retaining full ZIP only."
+            rm -f "$DELTA"
+            exit 0
+          fi
+          export DELTA_NAME BASE VERSION OUT
+          python3 - <<'PY'
+          import hashlib, json, os
+          output = os.environ["OUT"]
+          path = os.path.join(output, "latest-linux.json")
+          manifest = json.load(open(path, encoding="utf-8"))
+          delta_name = os.environ["DELTA_NAME"]
+          with open(os.path.join(output, delta_name), "rb") as src:
+              sha = hashlib.file_digest(src, "sha256").hexdigest()
+          manifest.update(
+              deltaBaseVersion=os.environ["BASE"],
+              deltaUrl=f'https://github.com/${{ github.repository }}/releases/download/v{os.environ["VERSION"]}/{delta_name}',
+              deltaSha256=sha,
+          )
+          with open(path, "w", encoding="utf-8") as dest:
+              json.dump(manifest, dest, indent=2)
+              dest.write("\\n")
+          PY
+          ls -lh "$CURRENT" "$DELTA"
+
       # The .deb is one installation path, but publish a complete portable
       # layout too.  It mirrors the Windows portable launcher: users extract
       # it once, always run DuoLauncher, and receive the smaller update ZIPs.
