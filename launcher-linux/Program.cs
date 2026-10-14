@@ -149,24 +149,53 @@ internal sealed class LinuxUpdater(HttpClient http, LinuxReleaseStore store, str
     {
         Console.WriteLine($"Actualizando Duo Desktop a {update.Version}…");
         progress?.Report(new ProgressInfo(8, "Preparando descarga…"));
-        var archive = await DownloadVerifiedAsync(update, ct);
-        progress?.Report(new ProgressInfo(72, "Verificando…", "Verificando SHA-256…"));
-        // DownloadVerifiedAsync already verified the temporary archive before promotion.
-        LauncherLog.Write(dataRoot, $"Extrayendo actualización {update.Version}."); progress?.Report(new ProgressInfo(82, "Extrayendo actualización…")); var staging = store.ExtractToStaging(archive, update.Version);
+        string? staging = null;
+        if (update.DeltaBaseVersion == current.Version &&
+            !string.IsNullOrWhiteSpace(update.DeltaUrl) &&
+            !string.IsNullOrWhiteSpace(update.DeltaSha256) &&
+            Directory.Exists(store.VersionDirectory(current.Version)))
+        {
+            try
+            {
+                var delta = new UpdateManifest {
+                    Version = update.Version,
+                    Url = update.DeltaUrl,
+                    Sha256 = update.DeltaSha256,
+                };
+                var archiveDelta = await DownloadVerifiedAsync(delta, ct, "-delta");
+                progress?.Report(new ProgressInfo(76, "Verificando archivos conservados…"));
+                staging = store.ExtractIncrementalToStaging(
+                    archiveDelta, current.Version, update.Version);
+                LauncherLog.Write(dataRoot, "Actualización incremental verificada.");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception error)
+            {
+                LauncherLog.Write(dataRoot, $"Paquete incremental rechazado; usando actualización completa: {error}");
+            }
+        }
+        if (staging is null)
+        {
+            var archive = await DownloadVerifiedAsync(update, ct);
+            progress?.Report(new ProgressInfo(72, "Verificando…", "Verificando SHA-256…"));
+            LauncherLog.Write(dataRoot, $"Extrayendo actualización completa {update.Version}.");
+            staging = store.ExtractToStaging(archive, update.Version);
+        }
+        progress?.Report(new ProgressInfo(82, "Preparando actualización…"));
         store.UpdateLauncherFromStaging(staging);
         LauncherLog.Write(dataRoot, $"Activando versión {update.Version}."); progress?.Report(new ProgressInfo(92, "Instalando actualización…")); store.ActivateStagedVersion(update.Version, staging);
         var activated = new CurrentRelease { Version = update.Version, PreviousVersion = current.Version }; store.WriteCurrentAtomically(activated); return activated;
     }
-    public async Task<string> DownloadVerifiedAsync(UpdateManifest update, CancellationToken ct)
+    public async Task<string> DownloadVerifiedAsync(UpdateManifest update, CancellationToken ct, string suffix = "")
     {
         var downloads = Path.Combine(dataRoot, "updates", "downloads"); Directory.CreateDirectory(downloads);
-        var destination = Path.Combine(downloads, $"{update.Version}.zip");
+        var destination = Path.Combine(downloads, $"{update.Version}{suffix}.zip");
         if (File.Exists(destination))
         {
             try { await VerifySha256Async(destination, update.Sha256, ct); LauncherLog.Write(dataRoot, $"Reutilizando ZIP verificado de {update.Version}."); return destination; }
             catch (InvalidDataException) { LauncherLog.Write(dataRoot, $"El ZIP existente de {update.Version} es inválido; se descargará de nuevo."); File.Delete(destination); }
         }
-        var temporary = Path.Combine(downloads, $".{update.Version}.{Guid.NewGuid():N}.zip.part");
+        var temporary = Path.Combine(downloads, $".{update.Version}{suffix}.{Guid.NewGuid():N}.zip.part");
         try
         {
             LauncherLog.Write(dataRoot, $"Descargando actualización {update.Version}.");
@@ -263,6 +292,68 @@ internal sealed class LinuxReleaseStore(string installRoot, string dataRoot)
             SetExecutable(Path.Combine(root, "app", "duo_desktop")); SetExecutable(Path.Combine(root, "service", "DuoDesktop.Service")); ValidatePayload(root); return root;
         }
         catch { if (Directory.Exists(root)) Directory.Delete(root, true); throw; }
+    }
+    public string ExtractIncrementalToStaging(string archivePath, string baseVersion, string version)
+    {
+        var previous = VersionDirectory(baseVersion);
+        ValidatePayload(previous);
+        var staging = Path.Combine(DataRoot, "updates", "staging", $"{version}-delta-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(staging);
+        try
+        {
+            using var archive = ZipFile.OpenRead(archivePath);
+            var indexEntry = archive.GetEntry("delta-index.json")
+                ?? throw new InvalidDataException("Falta el índice del paquete incremental.");
+            using var index = JsonDocument.Parse(indexEntry.Open());
+            var root = index.RootElement;
+            if (root.GetProperty("baseVersion").GetString() != baseVersion)
+                throw new InvalidDataException("El parche corresponde a otra versión.");
+            var files = root.GetProperty("files");
+            var reused = root.GetProperty("reused");
+            var expected = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var item in files.EnumerateObject()) expected.Add(item.Name, item.Value.GetString()!);
+            var unchanged = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in reused.EnumerateObject())
+            {
+                if (!expected.TryGetValue(item.Name, out var sha) || sha != item.Value.GetString())
+                    throw new InvalidDataException("Índice incremental inconsistente.");
+                unchanged.Add(item.Name);
+            }
+            foreach (var pair in expected)
+            {
+                var normalized = pair.Key.Replace('/', Path.DirectorySeparatorChar);
+                var destination = Path.GetFullPath(Path.Combine(staging, normalized));
+                if (!destination.StartsWith(Path.GetFullPath(staging) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                    throw new InvalidDataException("Ruta insegura en paquete incremental.");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                if (unchanged.Contains(pair.Key))
+                {
+                    var source = Path.GetFullPath(Path.Combine(previous, normalized));
+                    if (!source.StartsWith(Path.GetFullPath(previous) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                        throw new InvalidDataException("Ruta insegura de archivo conservado.");
+                    File.Copy(source, destination);
+                }
+                else
+                {
+                    var entry = archive.GetEntry(pair.Key)
+                        ?? throw new InvalidDataException($"Falta archivo modificado: {pair.Key}");
+                    entry.ExtractToFile(destination, true);
+                }
+                using var stream = File.OpenRead(destination);
+                var actual = Convert.ToHexString(SHA256.HashData(stream));
+                if (!string.Equals(actual, pair.Value, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"SHA-256 incorrecto: {pair.Key}");
+            }
+            SetExecutable(Path.Combine(staging, "app", "duo_desktop"));
+            SetExecutable(Path.Combine(staging, "service", "DuoDesktop.Service"));
+            ValidatePayload(staging);
+            return staging;
+        }
+        catch
+        {
+            if (Directory.Exists(staging)) Directory.Delete(staging, true);
+            throw;
+        }
     }
     public void ActivateStagedVersion(string version, string staging)
     {
@@ -439,4 +530,4 @@ internal sealed class DesktopProgress : IProgress<ProgressInfo>, IDisposable
 }
 internal sealed class LauncherConfig { public string Channel { get; init; } = "beta"; public bool CheckForUpdates { get; init; } = true; public string ReleasesOwner { get; init; } = "davidm052006"; public string ReleasesRepository { get; init; } = "duo-desktop"; public string? DuoProject { get; init; } }
 internal sealed class CurrentRelease { public string Version { get; init; } = ""; public string? PreviousVersion { get; init; } }
-internal sealed class UpdateManifest { public string Version { get; init; } = ""; public string Channel { get; init; } = ""; public string Url { get; init; } = ""; public string Sha256 { get; init; } = ""; public string MinimumLauncherVersion { get; init; } = "1.0.0"; public bool Mandatory { get; init; } }
+internal sealed class UpdateManifest { public string Version { get; init; } = ""; public string Channel { get; init; } = ""; public string Url { get; init; } = ""; public string Sha256 { get; init; } = ""; public string MinimumLauncherVersion { get; init; } = "1.0.0"; public bool Mandatory { get; init; } public string? DeltaBaseVersion { get; init; } public string? DeltaUrl { get; init; } public string? DeltaSha256 { get; init; } }
