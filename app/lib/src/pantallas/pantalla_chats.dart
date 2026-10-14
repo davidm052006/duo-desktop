@@ -16,7 +16,12 @@ class PantallaChats extends StatefulWidget {
     super.key,
     this.proveedorInicial,
     this.titulo = 'Chats',
-    this.proveedores = const [ProveedorChat.chatgpt, ProveedorChat.grok],
+    this.proveedores = const [
+      ProveedorChat.chatgpt,
+      ProveedorChat.grok,
+      ProveedorChat.mokxi,
+      ProveedorChat.youtube,
+    ],
   });
 
   final ProveedorChat? proveedorInicial;
