@@ -481,11 +481,18 @@ jobs:
     if: github.ref == 'refs/heads/main' && success()
 
     steps:
-      - name: Verify Duo Cloud health
+      # Cloud availability is independent of building the desktop binaries.
+      # Warn about outages, but still publish validated installers/updates.
+      - name: Check Duo Cloud health (non-blocking)
         run: |
-          curl --fail --silent --show-error \
-            --retry 5 --retry-delay 5 --retry-all-errors \
-            "$DUO_PUBLIC_CLOUD_URL/health"
+          if ! curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 30 \
+            --retry 3 --retry-delay 5 --retry-all-errors \
+            "$DUO_PUBLIC_CLOUD_URL/health"; then
+            echo "::warning title=Duo Cloud unavailable::The cloud /health endpoint is failing. Desktop artifacts will still be published; investigate Render separately."
+            echo "### Duo Cloud warning" >> "$GITHUB_STEP_SUMMARY"
+            echo "The cloud health check failed. Desktop build and tests passed, so desktop updates can be published. Check Render before relying on cloud functionality." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Download DuoLauncher update
         uses: actions/download-artifact@v4
