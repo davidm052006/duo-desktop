@@ -39,7 +39,7 @@ class PanelProveedoresCef extends StatelessWidget {
   }
 }
 
-class _PanelUnProveedor extends StatelessWidget {
+class _PanelUnProveedor extends StatefulWidget {
   const _PanelUnProveedor({
     required this.proveedor,
     required this.motor,
@@ -51,25 +51,58 @@ class _PanelUnProveedor extends StatelessWidget {
   final bool visible;
 
   @override
+  State<_PanelUnProveedor> createState() => _PanelUnProveedorState();
+}
+
+class _PanelUnProveedorState extends State<_PanelUnProveedor> {
+  @override
+  void initState() {
+    super.initState();
+    _actualizarEntrada();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PanelUnProveedor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible != widget.visible ||
+        oldWidget.motor != widget.motor) {
+      _actualizarEntrada();
+    }
+  }
+
+  void _actualizarEntrada() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.visible) {
+        widget.motor?.activarEntrada();
+      } else {
+        widget.motor?.desactivarEntrada();
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final actual = motor;
-    final mostrarEsqueleto = actual == null ||
+    final actual = widget.motor;
+    final mostrarEsqueleto =
+        actual == null ||
         !actual.primerCargaCompleta ||
         actual.estado == EstadoMotorChat.creando ||
         actual.estado == EstadoMotorChat.sinCrear;
 
     return FocusScope(
-      canRequestFocus: visible,
-      descendantsAreFocusable: visible,
+      canRequestFocus: widget.visible,
+      descendantsAreFocusable: widget.visible,
       child: TickerMode(
-      enabled: visible,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (actual != null) actual.construirWidget(),
-          if (mostrarEsqueleto) EsqueletoCargaChat(proveedor: proveedor),
-        ],
-      ),
+        enabled: widget.visible,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (actual != null) actual.construirWidget(),
+            if (mostrarEsqueleto)
+              EsqueletoCargaChat(proveedor: widget.proveedor),
+          ],
+        ),
       ),
     );
   }
