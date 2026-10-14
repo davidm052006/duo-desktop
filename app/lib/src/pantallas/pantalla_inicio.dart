@@ -15,7 +15,9 @@ import '../widgets/tarjeta.dart';
 /// toca a mí?". Todo lo que enseña sale de `GET /board`; lo que todavía no
 /// tiene fuente aparece dicho con su fase, nunca relleno con datos de adorno.
 class PantallaInicio extends StatelessWidget {
-  const PantallaInicio({super.key});
+  const PantallaInicio({super.key, this.alNavegar});
+
+  final ValueChanged<String>? alNavegar;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +39,7 @@ class PantallaInicio extends StatelessWidget {
         tablero: estado.tablero!,
         resumen: ResumenInicio.desde(estado.tablero!),
         estado: estado,
+        alNavegar: alNavegar,
       ),
     };
   }
@@ -47,8 +50,10 @@ class _Contenido extends StatelessWidget {
     required this.tablero,
     required this.resumen,
     required this.estado,
+    this.alNavegar,
   });
 
+  final ValueChanged<String>? alNavegar;
   final Tablero tablero;
   final ResumenInicio resumen;
   final EstadoTablero estado;
@@ -68,7 +73,7 @@ class _Contenido extends StatelessWidget {
         final util = caja.maxWidth - _margen * 2;
         final anchas = util >= _anchoDosColumnas;
 
-        final agentes = _PanelAgentes(resumen: resumen);
+        final agentes = _PanelAgentes(resumen: resumen, alNavegar: alNavegar);
         final carga = _PanelCarga(resumen: resumen);
 
         return ListView(
@@ -511,9 +516,10 @@ class _Dato extends StatelessWidget {
 
 /// Una ficha por agente: qué tiene asignado y qué puede hacer David con él.
 class _PanelAgentes extends StatelessWidget {
-  const _PanelAgentes({required this.resumen});
+  const _PanelAgentes({required this.resumen, this.alNavegar});
 
   final ResumenInicio resumen;
+  final ValueChanged<String>? alNavegar;
 
   @override
   Widget build(BuildContext context) {
@@ -529,7 +535,7 @@ class _PanelAgentes extends StatelessWidget {
           for (final a in resumen.agentes)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _FichaAgente(agente: a),
+              child: _FichaAgente(agente: a, alNavegar: alNavegar),
             ),
         ],
       ),
@@ -538,9 +544,10 @@ class _PanelAgentes extends StatelessWidget {
 }
 
 class _FichaAgente extends StatelessWidget {
-  const _FichaAgente({required this.agente});
+  const _FichaAgente({required this.agente, this.alNavegar});
 
   final ResumenAgente agente;
+  final ValueChanged<String>? alNavegar;
 
   @override
   Widget build(BuildContext context) {
@@ -610,7 +617,7 @@ class _FichaAgente extends StatelessWidget {
             ],
           ],
           const SizedBox(height: 12),
-          _Acciones(estado: agente.estado, agente: agente.alias),
+          _Acciones(estado: agente.estado, agente: agente.alias, alNavegar: alNavegar),
         ],
       ),
     );
@@ -623,10 +630,11 @@ class _FichaAgente extends StatelessWidget {
 /// en vez de esconder lo que falta, y un botón que no hace nada sin avisar es
 /// peor que un botón apagado que lo dice.
 class _Acciones extends StatelessWidget {
-  const _Acciones({required this.estado, required this.agente});
+  const _Acciones({required this.estado, required this.agente, this.alNavegar});
 
   final EstadoAgente estado;
   final String agente;
+  final ValueChanged<String>? alNavegar;
 
   Future<void> _asignar(BuildContext context) async {
     final texto = TextEditingController();
@@ -711,13 +719,23 @@ class _Acciones extends StatelessWidget {
           Tooltip(
             message: nombre == 'Asignar tarea'
                 ? 'Crear tarea en el servicio local'
+                : (nombre == 'Ver terminal' || nombre == 'Ver pregunta' || nombre == 'Ver cambios') && alNavegar != null
+                ? 'Abrir sección correspondiente'
                 : '$nombre llega en la Fase $fase.',
             child: OutlinedButton.icon(
               onPressed: nombre == 'Asignar tarea'
                   ? () => _asignar(context)
+                  : alNavegar != null && nombre == 'Ver terminal'
+                  ? () => alNavegar!('Terminal')
+                  : alNavegar != null && nombre == 'Ver pregunta'
+                  ? () => alNavegar!('Preguntas')
+                  : alNavegar != null && nombre == 'Ver cambios'
+                  ? () => alNavegar!('GitHub')
                   : null,
               icon: Icon(icono, size: 15),
-              label: Text(nombre == 'Asignar tarea' ? nombre : '$nombre · Fase $fase'),
+              label: Text((nombre == 'Asignar tarea' ||
+                  (alNavegar != null && (nombre == 'Ver terminal' || nombre == 'Ver pregunta' || nombre == 'Ver cambios')))
+                  ? nombre : '$nombre · Fase $fase'),
             ),
           ),
         ],
