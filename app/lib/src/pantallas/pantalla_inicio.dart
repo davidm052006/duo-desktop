@@ -610,7 +610,7 @@ class _FichaAgente extends StatelessWidget {
             ],
           ],
           const SizedBox(height: 12),
-          _Acciones(estado: agente.estado),
+          _Acciones(estado: agente.estado, agente: agente.alias),
         ],
       ),
     );
@@ -623,9 +623,65 @@ class _FichaAgente extends StatelessWidget {
 /// en vez de esconder lo que falta, y un botón que no hace nada sin avisar es
 /// peor que un botón apagado que lo dice.
 class _Acciones extends StatelessWidget {
-  const _Acciones({required this.estado});
+  const _Acciones({required this.estado, required this.agente});
 
   final EstadoAgente estado;
+  final String agente;
+
+  Future<void> _asignar(BuildContext context) async {
+    final texto = TextEditingController();
+    try {
+      final descripcion = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Asignar tarea a $agente'),
+          content: SizedBox(
+            width: 460,
+            child: TextField(
+              controller: texto,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                hintText: 'Describe el trabajo que debe realizar',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (texto.text.trim().isNotEmpty) {
+                  Navigator.pop(dialogContext, texto.text.trim());
+                }
+              },
+              child: const Text('Asignar'),
+            ),
+          ],
+        ),
+      );
+      if (descripcion == null || !context.mounted) return;
+      await ClienteDuo().crearTarea(descripcion: descripcion, agente: agente);
+      if (!context.mounted) return;
+      await context.read<EstadoTablero>().refresca();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tarea enviada al servicio local')),
+      );
+    } on FalloDuo catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.mensaje)),
+        );
+      }
+    } finally {
+      texto.dispose();
+    }
+  }
 
   static const _porEstado = {
     EstadoAgente.trabajando: [
@@ -653,11 +709,15 @@ class _Acciones extends StatelessWidget {
         for (final (nombre, icono, fase) in _porEstado[estado]!) ...[
           const SizedBox(width: 8),
           Tooltip(
-            message: '$nombre llega en la Fase $fase.',
+            message: nombre == 'Asignar tarea'
+                ? 'Crear tarea en el servicio local'
+                : '$nombre llega en la Fase $fase.',
             child: OutlinedButton.icon(
-              onPressed: null,
+              onPressed: nombre == 'Asignar tarea'
+                  ? () => _asignar(context)
+                  : null,
               icon: Icon(icono, size: 15),
-              label: Text('$nombre · Fase $fase'),
+              label: Text(nombre == 'Asignar tarea' ? nombre : '$nombre · Fase $fase'),
             ),
           ),
         ],
