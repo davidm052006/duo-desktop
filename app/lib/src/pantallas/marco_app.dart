@@ -261,15 +261,8 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                               ((nombre == 'Tablero' || nombre == 'Tareas') &&
                                   proyectoCloud != null);
 
-                          if (estado.sinProyectoLocal && !libreDeBoard) {
-                            return _ProyectoLocalPendiente(
-                              irAProyectos: () => setState(
-                                () => _activo = destinos.indexWhere(
-                                  (d) => d.nombre == 'Proyectos',
-                                ),
-                              ),
-                            );
-                          }
+                          final mostrarProyectoPendiente =
+                              estado.sinProyectoLocal && !libreDeBoard;
 
                           // El panel web permanece montado incluso al navegar
                           // a otras vistas: no se reinicia la reproducción.
@@ -277,7 +270,16 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                             fit: StackFit.expand,
                             children: [
                               if (nombre != 'Chats' && nombre != 'YouTube')
-                                switch (nombre) {
+                                if (mostrarProyectoPendiente)
+                                  _ProyectoLocalPendiente(
+                                    irAProyectos: () => setState(
+                                      () => _activo = destinos.indexWhere(
+                                        (d) => d.nombre == 'Proyectos',
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  switch (nombre) {
                             'Proyectos' => const PantallaProyectos(),
                             'Tablero' => const PantallaTablero(),
                             'Tareas' => proyectoCloud == null
