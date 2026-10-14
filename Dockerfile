@@ -11,6 +11,11 @@ RUN dotnet publish cloud/DuoDesktop.Cloud.csproj \
     --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Npgsql/SSPI may load GSSAPI at runtime. Install the shared library to
+# prevent libgssapi_krb5.so.2 loader failures in Render's slim image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/publish .
 
