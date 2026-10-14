@@ -305,9 +305,15 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                             'Configuración' => const PantallaConfiguracion(),
                             _ => const PantallaInicio(),
                                 },
-                              Offstage(
-                                offstage: nombre != 'Chats' && nombre != 'YouTube',
-                                child: const PantallaChats(),
+                              // Maintain the CEF texture at the correct size
+                              // while hidden. Offstage gave it a zero-sized
+                              // surface, breaking input coordinates on return.
+                              IgnorePointer(
+                                ignoring: nombre != 'Chats' && nombre != 'YouTube',
+                                child: Opacity(
+                                  opacity: nombre == 'Chats' || nombre == 'YouTube' ? 1 : 0,
+                                  child: const PantallaChats(),
+                                ),
                               ),
                             ],
                           );
