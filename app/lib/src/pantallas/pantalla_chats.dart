@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -10,7 +12,16 @@ import '../tema/paleta.dart';
 /// Duo siga abierto: cambiar de proveedor u otra vista no recarga ni cierra
 /// la sesión.
 class PantallaChats extends StatefulWidget {
-  const PantallaChats({super.key});
+  const PantallaChats({
+    super.key,
+    this.proveedorInicial,
+    this.titulo = 'Chats',
+    this.proveedores = const [ProveedorChat.chatgpt, ProveedorChat.grok],
+  });
+
+  final ProveedorChat? proveedorInicial;
+  final String titulo;
+  final List<ProveedorChat> proveedores;
 
   @override
   State<PantallaChats> createState() => _PantallaChatsState();
@@ -33,7 +44,7 @@ class _PantallaChatsState extends State<PantallaChats> {
   void initState() {
     super.initState();
     _sesion.addListener(_alCambiarSesion);
-    _sesion.activar(_sesion.activo);
+    unawaited(_sesion.activar(widget.proveedorInicial ?? _sesion.activo));
   }
 
   @override
@@ -119,6 +130,7 @@ class _PantallaChatsState extends State<PantallaChats> {
           alAbrirNavegador: _abrirEnNavegador,
           recargarHabilitado: true,
           compacto: compacto,
+          proveedores: widget.proveedores,
         );
 
         return Padding(
@@ -132,13 +144,13 @@ class _PantallaChatsState extends State<PantallaChats> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (compacto) ...[
-                Text('Chats', style: textos.titleLarge),
+                Text(widget.titulo, style: textos.titleLarge),
                 const SizedBox(height: 8),
                 barra,
               ] else
                 Row(
                   children: [
-                    Text('Chats', style: textos.headlineSmall),
+                    Text(widget.titulo, style: textos.headlineSmall),
                     const SizedBox(width: 18),
                     Expanded(child: barra),
                   ],
@@ -204,6 +216,7 @@ class _BarraChats extends StatelessWidget {
     required this.alAbrirNavegador,
     required this.recargarHabilitado,
     required this.compacto,
+    required this.proveedores,
   });
 
   final ProveedorChat proveedor;
@@ -212,6 +225,7 @@ class _BarraChats extends StatelessWidget {
   final VoidCallback alAbrirNavegador;
   final bool recargarHabilitado;
   final bool compacto;
+  final List<ProveedorChat> proveedores;
 
   @override
   Widget build(BuildContext context) {
@@ -219,7 +233,11 @@ class _BarraChats extends StatelessWidget {
 
     return Row(
       children: [
-        _SelectorProveedor(seleccionado: proveedor, alCambiar: alCambiar),
+        _SelectorProveedor(
+          seleccionado: proveedor,
+          alCambiar: alCambiar,
+          proveedores: proveedores,
+        ),
         const Spacer(),
         IconButton(
           tooltip: 'Recargar página activa',
@@ -250,10 +268,12 @@ class _SelectorProveedor extends StatelessWidget {
   const _SelectorProveedor({
     required this.seleccionado,
     required this.alCambiar,
+    required this.proveedores,
   });
 
   final ProveedorChat seleccionado;
   final ValueChanged<ProveedorChat> alCambiar;
+  final List<ProveedorChat> proveedores;
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +289,7 @@ class _SelectorProveedor extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final p in ProveedorChat.values)
+          for (final p in proveedores)
             _ChipProveedor(
               nombre: p.nombre,
               activo: p == seleccionado,

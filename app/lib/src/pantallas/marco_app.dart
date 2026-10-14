@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../actualizaciones/estado_actualizacion.dart';
+import '../chats/proveedor_chat.dart';
 import '../estado/estado_proyecto_activo.dart';
 import '../estado/estado_tablero.dart';
 import '../tema/paleta.dart';
@@ -44,6 +45,7 @@ const destinosTrabajo = [
   Destino('Tareas', Icons.check_circle_outline),
   Destino('Agentes', Icons.hub_outlined),
   Destino('Chats', Icons.chat_bubble_outline),
+  Destino('Circuitos', Icons.memory_outlined),
   Destino('Preguntas', Icons.help_outline),
   Destino('Terminal', Icons.code),
   Destino('GitHub', Icons.commit_outlined),
@@ -175,8 +177,8 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
       _videoSeleccionado = elegido?.path;
       _estadoFondoVideo = elegido == null
           ? (_videos.isEmpty
-              ? 'La carpeta no contiene vídeos compatibles.'
-              : 'No quedan vídeos reproducibles en esta carpeta.')
+                ? 'La carpeta no contiene vídeos compatibles.'
+                : 'No quedan vídeos reproducibles en esta carpeta.')
           : null;
     });
   }
@@ -190,7 +192,8 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
 
     if (_videoSeleccionado == null && mounted) {
       setState(() {
-        _estadoFondoVideo = 'No quedan vídeos reproducibles. Último error: $mensaje';
+        _estadoFondoVideo =
+            'No quedan vídeos reproducibles. Último error: $mensaje';
       });
     }
   }
@@ -237,8 +240,10 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                           final proyectoCloud =
                               context.watch<EstadoProyectoActivo?>()?.proyecto;
                           final nombre = destinos[_activo].nombre;
-                          final libreDeBoard = nombre == 'Proyectos' ||
+                          final libreDeBoard =
+                              nombre == 'Proyectos' ||
                               nombre == 'Chats' ||
+                              nombre == 'Circuitos' ||
                               nombre == 'Personalización' ||
                               nombre == 'Configuración' ||
                               ((nombre == 'Tablero' || nombre == 'Tareas') &&
@@ -270,12 +275,19 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                                   ),
                             'Agentes' => const PantallaAgentes(),
                             'Chats' => const PantallaChats(),
+                            'Circuitos' => const PantallaChats(
+                              proveedorInicial: ProveedorChat.mokxi,
+                              titulo: 'Circuitos · Mokxi',
+                              proveedores: [ProveedorChat.mokxi],
+                            ),
                             'Preguntas' => const PantallaPreguntas(),
                             'Terminal' => const PantallaTerminal(),
                             'GitHub' => const PantallaGitHub(),
                             'Historial' => const PantallaHistorial(),
-                            'Visualizaciones' => const PantallaVisualizaciones(),
-                            'Personalización' => const PantallaPersonalizacion(),
+                            'Visualizaciones' =>
+                              const PantallaVisualizaciones(),
+                            'Personalización' =>
+                              const PantallaPersonalizacion(),
                             'Configuración' => const PantallaConfiguracion(),
                             _ => const PantallaInicio(),
                           };
@@ -351,19 +363,14 @@ class _BarraMarca extends StatelessWidget {
             const SizedBox(width: 10),
             Text(
               'DUO-DESKTOP',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(letterSpacing: 1.2),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(letterSpacing: 1.2),
             ),
             if (repo.isNotEmpty) ...[
               const SizedBox(width: 18),
               Flexible(
-                child: Insignia(
-                  repo,
-                  tono: paleta.tintaSecundaria,
-                  mono: true,
-                ),
+                child: Insignia(repo, tono: paleta.tintaSecundaria, mono: true),
               ),
             ],
             const Spacer(),
@@ -372,8 +379,8 @@ class _BarraMarca extends StatelessWidget {
             if (mostrarEstadoVideo &&
                 (videoSeleccionado != null || estadoFondoVideo != null)) ...[
               Tooltip(
-                message: estadoFondoVideo ??
-                    'Vídeo de fondo: $videoSeleccionado',
+                message:
+                    estadoFondoVideo ?? 'Vídeo de fondo: $videoSeleccionado',
                 child: Icon(
                   estadoFondoVideo == null
                       ? Icons.video_library_outlined
@@ -423,14 +430,15 @@ class _CentroNotificaciones extends StatelessWidget {
           onPressed: actualizaciones == null
               ? null
               : () {
-            actualizaciones.marcaLeida();
-            showDialog<void>(
-              context: context,
-              builder: (_) => const _DialogoNotificaciones(),
-            );
-          },
+                  actualizaciones.marcaLeida();
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => const _DialogoNotificaciones(),
+                  );
+                },
         ),
-        if (actualizaciones?.hayActualizacion == true && !actualizaciones!.leida)
+        if (actualizaciones?.hayActualizacion == true &&
+            !actualizaciones!.leida)
           Positioned(
             right: 8,
             top: 8,
@@ -530,10 +538,7 @@ class _DialogoNotificaciones extends StatelessWidget {
 }
 
 class _Conexion extends StatelessWidget {
-  const _Conexion({
-    required this.conectado,
-    required this.proyectoPendiente,
-  });
+  const _Conexion({required this.conectado, required this.proyectoPendiente});
 
   final bool conectado;
   final bool proyectoPendiente;
@@ -554,8 +559,8 @@ class _Conexion extends StatelessWidget {
           !conectado
               ? 'Servicio local sin responder'
               : proyectoPendiente
-                  ? 'Servicio conectado · configura un proyecto'
-                  : 'Servicio local conectado',
+              ? 'Servicio conectado · configura un proyecto'
+              : 'Servicio local conectado',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
@@ -626,8 +631,8 @@ class _BarraLateral extends StatelessWidget {
     final esperando = estado.tablero == null
         ? 0
         : estado.tablero!.tareas
-            .where((t) => t.estadoCrudo == 'esperando')
-            .length;
+              .where((t) => t.estadoCrudo == 'esperando')
+              .length;
 
     return ValueListenableBuilder<double>(
       valueListenable: FondoVideoConfig.opacidadPaneles,
@@ -642,12 +647,10 @@ class _BarraLateral extends StatelessWidget {
               _Entrada(
                 destino: destinosTrabajo[i],
                 activa: i == activo,
-                aviso:
-                    destinosTrabajo[i].nombre == 'Preguntas' && esperando > 0
-                        ? '$esperando'
-                        : null,
-                alPulsar:
-                    destinosTrabajo[i].listo ? () => alElegir(i) : null,
+                aviso: destinosTrabajo[i].nombre == 'Preguntas' && esperando > 0
+                    ? '$esperando'
+                    : null,
+                alPulsar: destinosTrabajo[i].listo ? () => alElegir(i) : null,
               ),
             const SizedBox(height: 18),
             const _Rotulo('Preferencias'),
@@ -673,12 +676,12 @@ class _Rotulo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
-        child: Text(
-          texto.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall,
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+    child: Text(
+      texto.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall,
+    ),
+  );
 }
 
 class _Entrada extends StatelessWidget {
@@ -701,8 +704,8 @@ class _Entrada extends StatelessWidget {
     final tinta = activa
         ? paleta.acento
         : destino.listo
-            ? paleta.tintaPrincipal
-            : paleta.tintaTenue;
+        ? paleta.tintaPrincipal
+        : paleta.tintaTenue;
 
     return Semantics(
       selected: activa,
