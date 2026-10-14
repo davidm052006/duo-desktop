@@ -303,7 +303,14 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                             'Personalización' =>
                               const PantallaPersonalizacion(),
                             'Configuración' => const PantallaConfiguracion(),
-                            _ => const PantallaInicio(),
+                            _ => PantallaInicio(
+                              alNavegar: (nombre) {
+                                final indice = destinos.indexWhere(
+                                  (destino) => destino.nombre == nombre,
+                                );
+                                if (indice >= 0) _elegirDestino(indice);
+                              },
+                            ),
                                 },
                               // Maintain the CEF texture at the correct size
                               // while hidden. Offstage gave it a zero-sized
