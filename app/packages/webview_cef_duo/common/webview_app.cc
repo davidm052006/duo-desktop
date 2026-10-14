@@ -127,6 +127,11 @@ void WebviewApp::OnBeforeCommandLineProcessing(const CefString &process_type, Ce
 			command_line->AppendSwitch("process-per-tab");                                      //each tab in its own process
 		}
 		command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");     //autoplay policy for media
+        // Keep audio/video active when Duo loses focus or is minimized.
+        // This does not bypass YouTube playback restrictions or OS suspend.
+        command_line->AppendSwitch("disable-background-timer-throttling");
+        command_line->AppendSwitch("disable-renderer-backgrounding");
+        command_line->AppendSwitch("disable-backgrounding-occluded-windows");
 
         //Support cross domain requests
         std::string values = command_line->GetSwitchValue("disable-features");
