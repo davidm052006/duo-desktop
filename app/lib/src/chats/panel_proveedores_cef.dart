@@ -21,18 +21,18 @@ class PanelProveedoresCef extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        IndexedStack(
-          index: sesion.activo.index,
-          sizing: StackFit.expand,
-          children: [
-            for (final proveedor in ProveedorChat.values)
-              _PanelUnProveedor(
+        for (final proveedor in ProveedorChat.values)
+          IgnorePointer(
+            ignoring: sesion.activo != proveedor,
+            child: Opacity(
+              opacity: sesion.activo == proveedor ? 1 : 0,
+              child: _PanelUnProveedor(
                 proveedor: proveedor,
                 motor: sesion.motorDe(proveedor),
                 visible: sesion.activo == proveedor,
               ),
-          ],
-        ),
+            ),
+          ),
         ?capaError,
       ],
     );
@@ -58,7 +58,10 @@ class _PanelUnProveedor extends StatelessWidget {
         actual.estado == EstadoMotorChat.creando ||
         actual.estado == EstadoMotorChat.sinCrear;
 
-    return TickerMode(
+    return FocusScope(
+      canRequestFocus: visible,
+      descendantsAreFocusable: visible,
+      child: TickerMode(
       enabled: visible,
       child: Stack(
         fit: StackFit.expand,
@@ -66,6 +69,7 @@ class _PanelUnProveedor extends StatelessWidget {
           if (actual != null) actual.construirWidget(),
           if (mostrarEsqueleto) EsqueletoCargaChat(proveedor: proveedor),
         ],
+      ),
       ),
     );
   }
