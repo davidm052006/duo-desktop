@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../actualizaciones/estado_actualizacion.dart';
 import '../chats/proveedor_chat.dart';
+import '../chats/sesion_chats_cef.dart';
 import '../estado/estado_proyecto_activo.dart';
 import '../estado/estado_tablero.dart';
 import '../tema/paleta.dart';
@@ -45,7 +46,7 @@ const destinosTrabajo = [
   Destino('Tareas', Icons.check_circle_outline),
   Destino('Agentes', Icons.hub_outlined),
   Destino('Chats', Icons.chat_bubble_outline),
-  Destino('Circuitos', Icons.memory_outlined),
+  Destino('YouTube', Icons.smart_display_outlined),
   Destino('Preguntas', Icons.help_outline),
   Destino('Terminal', Icons.code),
   Destino('GitHub', Icons.commit_outlined),
@@ -82,6 +83,17 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     FondoVideoConfig.cambios.addListener(_cargarFondo);
     _cargarFondo();
+  }
+
+  void _elegirDestino(int indice) {
+    final destino = destinos[indice].nombre;
+    if (destino == 'YouTube') {
+      unawaited(SesionChatsCef.instancia.activar(ProveedorChat.youtube));
+    } else if (destino == 'Chats' &&
+        SesionChatsCef.instancia.activo == ProveedorChat.youtube) {
+      unawaited(SesionChatsCef.instancia.activar(ProveedorChat.chatgpt));
+    }
+    setState(() => _activo = indice);
   }
 
   @override
@@ -230,7 +242,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                   children: [
                     _BarraLateral(
                       activo: _activo,
-                      alElegir: (i) => setState(() => _activo = i),
+                      alElegir: _elegirDestino,
                     ),
                     VerticalDivider(width: 1, color: paleta.rejilla),
                     Expanded(
@@ -243,7 +255,7 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                           final libreDeBoard =
                               nombre == 'Proyectos' ||
                               nombre == 'Chats' ||
-                              nombre == 'Circuitos' ||
+                              nombre == 'YouTube' ||
                               nombre == 'Personalización' ||
                               nombre == 'Configuración' ||
                               ((nombre == 'Tablero' || nombre == 'Tareas') &&
@@ -259,7 +271,13 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                             );
                           }
 
-                          return switch (nombre) {
+                          // El panel web permanece montado incluso al navegar
+                          // a otras vistas: no se reinicia la reproducción.
+                          return Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (nombre != 'Chats' && nombre != 'YouTube')
+                                switch (nombre) {
                             'Proyectos' => const PantallaProyectos(),
                             'Tablero' => const PantallaTablero(),
                             'Tareas' => proyectoCloud == null
@@ -274,12 +292,6 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                                     ),
                                   ),
                             'Agentes' => const PantallaAgentes(),
-                            'Chats' => const PantallaChats(),
-                            'Circuitos' => const PantallaChats(
-                              proveedorInicial: ProveedorChat.mokxi,
-                              titulo: 'Circuitos · Mokxi',
-                              proveedores: [ProveedorChat.mokxi],
-                            ),
                             'Preguntas' => const PantallaPreguntas(),
                             'Terminal' => const PantallaTerminal(),
                             'GitHub' => const PantallaGitHub(),
@@ -290,7 +302,13 @@ class _MarcoAppState extends State<MarcoApp> with WidgetsBindingObserver {
                               const PantallaPersonalizacion(),
                             'Configuración' => const PantallaConfiguracion(),
                             _ => const PantallaInicio(),
-                          };
+                                },
+                              Offstage(
+                                offstage: nombre != 'Chats' && nombre != 'YouTube',
+                                child: const PantallaChats(),
+                              ),
+                            ],
+                          );
                         },
                       ),
                     ),
