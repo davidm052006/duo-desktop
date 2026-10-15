@@ -344,9 +344,16 @@ void WebviewHandler::changeSize(int browserId, float a_dpi, int w, int h)
 {
     auto it = browser_map_.find(browserId);
     if (it != browser_map_.end()) {
+        const bool dpi_changed = it->second.dpi != a_dpi;
         it->second.dpi = a_dpi;
         it->second.width = w;
         it->second.height = h;
+        // WasResized only invalidates the viewport. Chromium caches screen
+        // metrics separately, so it must be told when Flutter moves this
+        // texture to a monitor with another device pixel ratio.
+        if (dpi_changed) {
+            it->second.browser->GetHost()->NotifyScreenInfoChanged();
+        }
         it->second.browser->GetHost()->WasResized();
     }
 }
@@ -540,6 +547,15 @@ void WebviewHandler::setClientFocus(int browserId, bool focus)
         return;
     }
     it->second.wants_focus = focus;
+    // Native keyboard messages arrive at the Flutter host window and have no
+    // browser id. Keep this target in sync with the visible Flutter texture,
+    // rather than relying on a previous editable-node notification.
+    if (focus) {
+        current_focused_browser_ = it->second.browser;
+    } else if (current_focused_browser_ &&
+               current_focused_browser_->IsSame(it->second.browser)) {
+        current_focused_browser_ = nullptr;
+    }
     if (focus) {
         // Re-arm the first-frame re-assert (handles a SetFocus that lands before
         // the browser is render/input-ready under external_begin_frame).
@@ -759,9 +775,15 @@ void WebviewHandler::GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect) {
 }
 
 bool WebviewHandler::GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& screen_info) {
-    //todo: hi dpi support
-    screen_info.device_scale_factor  = browser_map_[browser->GetIdentifier()].dpi;
-    return false;
+    auto it = browser_map_.find(browser->GetIdentifier());
+    if (it == browser_map_.end()) {
+        return false;
+    }
+    screen_info.device_scale_factor = it->second.dpi;
+    // Returning false discards the scale factor above and makes CEF fall back
+    // to its host default. The Flutter texture and every CEF input coordinate
+    // are physical pixels, therefore this information is authoritative.
+    return true;
 }
 
 void WebviewHandler::OnPaint(CefRefPtr<CefBrowser> browser, CefRenderHandler::PaintElementType type,

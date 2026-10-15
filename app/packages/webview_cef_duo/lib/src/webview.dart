@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +48,8 @@ class WebViewController extends ValueNotifier<bool> {
   Future<void> get ready => _creatingCompleter.future;
   bool _isDisposed = false;
   bool _focusEditable = false;
+  VoidCallback? _activateInput;
+  VoidCallback? _deactivateInput;
 
   final int _index;
   late int _browserId;
@@ -178,6 +181,16 @@ class WebViewController extends ValueNotifier<bool> {
     return _pluginChannel.invokeMethod('setClientFocus', [_browserId, focus]);
   }
 
+  /// Gives the visible OSR surface ownership of Flutter and CEF input.
+  ///
+  /// A texture kept in an [IndexedStack] is not removed from the tree. Without
+  /// this explicit hand-off, a previously visible browser may remain the native
+  /// keyboard target after changing providers or returning from another page.
+  void activateInput() => _activateInput?.call();
+
+  /// Releases input before this surface is hidden.
+  void deactivateInput() => _deactivateInput?.call();
+
   /// Sends a key event to CEF. Used on platforms without native key support (eLinux).
   Future<void> sendKeyEvent(int type, int keyCode, int modifiers, int character,
       int unmodifiedCharacter) async {
@@ -185,14 +198,8 @@ class WebViewController extends ValueNotifier<bool> {
       return;
     }
     assert(value);
-    return _pluginChannel.invokeMethod('sendKeyEvent', [
-      _browserId,
-      type,
-      keyCode,
-      modifiers,
-      character,
-      unmodifiedCharacter
-    ]);
+    return _pluginChannel.invokeMethod('sendKeyEvent',
+        [_browserId, type, keyCode, modifiers, character, unmodifiedCharacter]);
   }
 
   Future<void> setJavaScriptChannels(Set<JavascriptChannel> channels) async {
@@ -332,6 +339,7 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
   MouseCursor _mouseType = SystemMouseCursors.basic;
   bool? _hasNativeKeySupport;
   int _buttonsPresionados = 0;
+  double _devicePixelRatio = 1.0;
 
   WebViewController get _controller => widget.controller;
 
@@ -425,10 +433,47 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
       _hasNativeKeySupport = value;
     });
 
+    _controller._activateInput = _activateInput;
+    _controller._deactivateInput = _deactivateInput;
+
     // Report initial surface size
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _reportSurfaceSize(context));
   }
+
+  @override
+  void dispose() {
+    if (identical(_controller._activateInput, _activateInput)) {
+      _controller._activateInput = null;
+      _controller._deactivateInput = null;
+    }
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _activateInput() {
+    if (!mounted) return;
+    if (kDebugMode) {
+      debugPrint('[CEF input] activate browser=${_controller._browserId}');
+    }
+    _focusNode.requestFocus();
+    _controller.setClientFocus(true);
+    _reportSurfaceSize(context);
+  }
+
+  void _deactivateInput() {
+    if (!mounted) return;
+    if (kDebugMode) {
+      debugPrint('[CEF input] deactivate browser=${_controller._browserId}');
+    }
+    _controller.setClientFocus(false);
+    if (_focusNode.hasFocus) _focusNode.unfocus();
+  }
+
+  Offset _toCefPosition(Offset logicalPosition) =>
+      logicalPosition * _devicePixelRatio;
+
+  int _toCefDelta(double delta) => (delta * _devicePixelRatio).round();
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     // Only handle keys on platforms without native key support (eLinux)
@@ -440,10 +485,10 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
     // Map Flutter key event to CEF key event
     final logicalKey = event.logicalKey;
     final character = event.character;
-    
+
     // Convert logical key to Windows keycode
     int keyCode = _logicalKeyToWindowsKeyCode(logicalKey);
-    
+
     // Build modifiers
     int modifiers = 0;
     if (HardwareKeyboard.instance.isShiftPressed) {
@@ -455,7 +500,7 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
     if (HardwareKeyboard.instance.isAltPressed) {
       modifiers |= eventFlagAltDown;
     }
-    
+
     // Determine event type
     int type;
     if (event is KeyDownEvent) {
@@ -465,7 +510,13 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
     } else {
       return KeyEventResult.ignored;
     }
-    
+
+    if (kDebugMode) {
+      // Do not log event.character: it can contain private text.
+      debugPrint('[CEF input] key browser=${_controller._browserId} '
+          'type=$type code=$keyCode modifiers=$modifiers');
+    }
+
     // Send key event to CEF
     _controller.sendKeyEvent(
       type,
@@ -474,7 +525,7 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
       character?.codeUnitAt(0) ?? 0,
       character?.codeUnitAt(0) ?? 0,
     );
-    
+
     // Send CHAR event after RAWKEYDOWN when character is present (required for text entry)
     if (event is KeyDownEvent && character != null) {
       _controller.sendKeyEvent(
@@ -517,7 +568,7 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
     if (key == LogicalKeyboardKey.arrowDown) return 0x28;
     if (key == LogicalKeyboardKey.arrowLeft) return 0x25;
     if (key == LogicalKeyboardKey.arrowRight) return 0x27;
-    
+
     // For alphanumeric keys, use the key label
     final keyLabel = key.keyLabel;
     if (keyLabel.length == 1) {
@@ -531,7 +582,7 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
         return charCode;
       }
     }
-    
+
     // Default fallback
     return 0;
   }
@@ -571,7 +622,7 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
       child: SizeChangedLayoutNotifier(
         child: Listener(
           onPointerHover: (ev) {
-            _controller._cursorMove(ev.localPosition);
+            _controller._cursorMove(_toCefPosition(ev.localPosition));
             _tooltip?.cursorOffset = ev.position;
           },
           onPointerDown: (ev) {
@@ -585,24 +636,39 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
               });
             }
             _buttonsPresionados = ev.buttons;
-            _controller._cursorClickDown(ev.localPosition, ev.buttons);
+            if (kDebugMode) {
+              debugPrint('[CEF input] down browser=${_controller._browserId} '
+                  'logical=${ev.localPosition} cef=${_toCefPosition(ev.localPosition)} '
+                  'buttons=${ev.buttons}');
+            }
+            _controller._cursorClickDown(
+                _toCefPosition(ev.localPosition), ev.buttons);
           },
           onPointerUp: (ev) {
-            _controller._cursorClickUp(ev.localPosition, _buttonsPresionados);
+            _controller._cursorClickUp(
+                _toCefPosition(ev.localPosition), _buttonsPresionados);
             _buttonsPresionados = 0;
           },
           onPointerMove: (ev) {
-            _controller._cursorDragging(ev.localPosition);
+            _controller._cursorDragging(_toCefPosition(ev.localPosition));
           },
           onPointerSignal: (signal) {
             if (signal is PointerScrollEvent) {
-              _controller._setScrollDelta(signal.localPosition,
-                  signal.scrollDelta.dx.round(), signal.scrollDelta.dy.round());
+              if (kDebugMode) {
+                debugPrint(
+                    '[CEF input] scroll browser=${_controller._browserId} '
+                    'logical=${signal.localPosition} '
+                    'cef=${_toCefPosition(signal.localPosition)}');
+              }
+              _controller._setScrollDelta(
+                  _toCefPosition(signal.localPosition),
+                  _toCefDelta(signal.scrollDelta.dx),
+                  _toCefDelta(signal.scrollDelta.dy));
             }
           },
           onPointerPanZoomUpdate: (event) {
-            _controller._setScrollDelta(event.localPosition,
-                event.panDelta.dx.round(), event.panDelta.dy.round());
+            _controller._setScrollDelta(_toCefPosition(event.localPosition),
+                _toCefDelta(event.panDelta.dx), _toCefDelta(event.panDelta.dy));
           },
           child: MouseRegion(
             cursor: _mouseType,
@@ -614,12 +680,17 @@ class WebViewState extends State<WebView> with WebeViewTextInput {
   }
 
   void _reportSurfaceSize(BuildContext context) async {
-    double dpi = MediaQuery.of(context).devicePixelRatio;
+    final dpi = MediaQuery.of(context).devicePixelRatio;
+    _devicePixelRatio = dpi;
     final box = _key.currentContext?.findRenderObject() as RenderBox?;
     if (box != null) {
       await _controller.ready;
-      unawaited(
-          _controller._setSize(dpi, Size(box.size.width, box.size.height)));
+      final physicalSize = Size(box.size.width * dpi, box.size.height * dpi);
+      if (kDebugMode) {
+        debugPrint('[CEF input] surface=${_controller._browserId} '
+            'logical=${box.size} physical=$physicalSize dpi=$dpi');
+      }
+      unawaited(_controller._setSize(dpi, physicalSize));
     }
   }
 }

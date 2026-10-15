@@ -28,6 +28,10 @@ class MotorChatCef extends ChangeNotifier {
   String? get url => _url;
   bool get listo => _controller?.value == true;
 
+  void activarEntrada() => _controller?.activateInput();
+
+  void desactivarEntrada() => _controller?.deactivateInput();
+
   Future<void> crear() {
     return _creacion ??= _crearAhora();
   }
