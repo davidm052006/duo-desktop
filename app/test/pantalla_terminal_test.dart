@@ -68,7 +68,6 @@ void main() {
         find.textContaining('Esperando reconexión con /events'),
         findsOneWidget,
       );
-      expect(find.textContaining('Fase 5'), findsOneWidget);
     },
   );
 

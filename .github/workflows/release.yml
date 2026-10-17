@@ -243,7 +243,13 @@ jobs:
             echo "Previous ZIP unavailable; using full ZIP."
             exit 0
           fi
-          BASE="$(python3 -c 'import json;print(json.load(open("artifacts/previous/latest-linux.json"))["version"])')"
+          # Older releases may have a malformed manifest. An incremental
+          # package is an optimization only: retain the complete ZIP instead
+          # of failing the whole release in that case.
+          if ! BASE="$(python3 -c 'import json;print(json.load(open("artifacts/previous/latest-linux.json"))["version"])')"; then
+            echo "Previous manifest is invalid; using full ZIP."
+            exit 0
+          fi
           PREVIOUS="artifacts/previous/DuoDesktop-${BASE}-linux-x64-update.zip"
           if [[ ! -f "$PREVIOUS" ]]; then
             echo "Previous version mismatch; using full ZIP."
