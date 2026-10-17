@@ -104,6 +104,15 @@ jobs:
           channel: stable
           cache: true
 
+      # CEF is downloaded and its wrapper is compiled during the first native
+      # build. It is pinned in download.cmake, so restoring it avoids fetching
+      # Chromium again when its Linux integration has not changed.
+      - name: Cache Linux CEF distribution
+        uses: actions/cache@v4
+        with:
+          path: app/packages/webview_cef_duo/third/cef
+          key: ${{ runner.os }}-cef-${{ hashFiles('app/packages/webview_cef_duo/third/download.cmake', 'app/packages/webview_cef_duo/linux/CMakeLists.txt') }}
+
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
 
@@ -361,6 +370,14 @@ jobs:
           channel: stable
           cache: true
 
+      # Keep CEF/Chromium between Windows runs. The key changes whenever the
+      # pinned CEF version or its Windows integration changes.
+      - name: Cache Windows CEF distribution
+        uses: actions/cache@v4
+        with:
+          path: app/packages/webview_cef_duo/third/cef
+          key: ${{ runner.os }}-cef-${{ hashFiles('app/packages/webview_cef_duo/third/download.cmake', 'app/packages/webview_cef_duo/windows/CMakeLists.txt') }}
+
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
 
@@ -494,12 +511,35 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts\previous | Out-Null
           try {
             $previousTag = gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name
-            if (-not $previousTag) { Write-Host "No prior release; full ZIP remains available."; exit 0 }
+            if ($LASTEXITCODE -ne 0 -or -not $previousTag) { Write-Host "No prior release; full ZIP remains available."; $global:LASTEXITCODE = 0; exit 0 }
             gh release download $previousTag --repo "${{ github.repository }}" --pattern latest.json --dir artifacts\previous
-            gh release download $previousTag --repo "${{ github.repository }}" --pattern 'DuoDesktop-*-windows-x64-update.zip' --dir artifacts\previous
-            $previousManifest = Get-Content artifacts\previous\latest.json -Raw | ConvertFrom-Json
-            $base = $previousManifest.version
-            $previous = "artifacts\previous\DuoDesktop-$base-windows-x64-update.zip"
+            if ($LASTEXITCODE -eq 0) {
+              gh release download $previousTag --repo "${{ github.repository }}" --pattern 'DuoDesktop-*-windows-x64-update.zip' --dir artifacts\previous
+            }
+
+            if ($LASTEXITCODE -eq 0 -and (Test-Path artifacts\previous\latest.json)) {
+              $previousManifest = Get-Content artifacts\previous\latest.json -Raw | ConvertFrom-Json
+              $base = $previousManifest.version
+              $previous = "artifacts\previous\DuoDesktop-$base-windows-x64-update.zip"
+            } else {
+              # Releases made before the launcher-update artifact existed still
+              # contain app/ and service/ in the portable ZIP. Repackage that
+              # payload once so users of those releases get a small first delta.
+              Write-Host "No previous incremental Windows payload; adapting the legacy portable ZIP."
+              $global:LASTEXITCODE = 0
+              gh release download $previousTag --repo "${{ github.repository }}" --pattern 'DuoDesktop-*-windows-x64.zip' --dir artifacts\previous
+              if ($LASTEXITCODE -ne 0) { Write-Host "Previous Windows ZIP unavailable; using full ZIP."; $global:LASTEXITCODE = 0; exit 0 }
+              $legacyZip = Get-ChildItem artifacts\previous\DuoDesktop-*-windows-x64.zip | Select-Object -First 1
+              $legacyRoot = "artifacts\previous\legacy"
+              Expand-Archive -Path $legacyZip.FullName -DestinationPath $legacyRoot -Force
+              if (-not (Test-Path "$legacyRoot\app\duo_desktop.exe") -or -not (Test-Path "$legacyRoot\service\DuoDesktop.Service.exe")) {
+                Write-Host "Legacy Windows ZIP has no compatible update payload; using full ZIP."
+                exit 0
+              }
+              $base = $previousTag.TrimStart('v')
+              $previous = "artifacts\previous\DuoDesktop-$base-windows-x64-update.zip"
+              Compress-Archive -Path "$legacyRoot\app", "$legacyRoot\service" -DestinationPath $previous -Force
+            }
             if (-not (Test-Path $previous)) { Write-Host "Previous ZIP unavailable; using full ZIP."; exit 0 }
             $deltaName = "DuoDesktop-$version-windows-x64-delta.zip"
             $delta = "$out\$deltaName"
@@ -513,6 +553,10 @@ jobs:
             $manifest | ConvertTo-Json | Set-Content $manifestPath -Encoding utf8NoBOM
           } catch {
             Write-Warning "Could not create incremental Windows update: $_"
+            # A delta is an optimization. Native executables such as `gh`
+            # leave LASTEXITCODE non-zero even when their error is handled.
+            # Reset it so an unavailable predecessor cannot fail a release.
+            $global:LASTEXITCODE = 0
           }
 
       # DuoLauncher.exe (with the Duo icon) is not built from this repo; it is
@@ -655,6 +699,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: linux-launcher-update
+          path: release-assets
+
+      - name: Download Windows launcher update
+        uses: actions/download-artifact@v4
+        with:
+          name: launcher-update
           path: release-assets
 
       - name: Generate checksums
