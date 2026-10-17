@@ -6,6 +6,7 @@ public sealed record CreateProjectRequest(
     string? RepositoryFullName,
     string? TargetBranch);
 public sealed record InviteMemberRequest(string? Email, string? Role);
+public sealed record ReportAgentCapabilitiesRequest(string[]? Providers);
 public sealed record UpsertTaskRequest(
     string? ExternalId,
     string? Title,

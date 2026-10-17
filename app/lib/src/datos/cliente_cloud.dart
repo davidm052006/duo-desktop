@@ -67,19 +67,33 @@ class MiembroCloud {
     required this.email,
     required this.nombre,
     required this.rol,
+    required this.capacidades,
   });
 
   final String id;
   final String email;
   final String? nombre;
   final String rol;
+  final List<String> capacidades;
 
   factory MiembroCloud.desdeJson(Map<String, dynamic> json) => MiembroCloud(
     id: '${json['userId'] ?? ''}',
     email: '${json['email'] ?? ''}',
     nombre: json['displayName'] == null ? null : '${json['displayName']}',
     rol: '${json['role'] ?? 'viewer'}',
+    capacidades: _capacidades(json['agentCapabilities']),
   );
+
+  static List<String> _capacidades(dynamic value) {
+    try {
+      final decoded = value is String ? jsonDecode(value) : value;
+      return decoded is List
+          ? decoded.map((item) => '$item').toList(growable: false)
+          : const [];
+    } on Object {
+      return const [];
+    }
+  }
 }
 
 class PullRequestCloud {
@@ -240,6 +254,14 @@ class ClienteCloud {
       throw const FalloCloud('Respuesta inválida al cargar el usuario actual.');
     }
     return UsuarioCloudActual.desdeJson(decoded);
+  }
+
+  Future<void> reportarCapacidades(List<String> providers) async {
+    await _enviar(
+      'POST',
+      '/api/me/agent-capabilities',
+      cuerpo: {'providers': providers},
+    );
   }
 
   Future<List<ProyectoCloud>> proyectos() async {

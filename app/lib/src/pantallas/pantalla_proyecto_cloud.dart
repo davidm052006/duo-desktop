@@ -45,6 +45,7 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
           : (widget.initialTab > 2 ? 2 : widget.initialTab),
     );
     _recargar();
+    _reportarCapacidades();
   }
 
   @override
@@ -59,6 +60,19 @@ class _PantallaProyectoCloudState extends State<PantallaProyectoCloud>
   void _recargar() {
     _miembros = _cloud.miembros(widget.proyecto.id);
     _tareas = _cloud.tareas(widget.proyecto.id);
+  }
+
+  Future<void> _reportarCapacidades() async {
+    try {
+      final capacidades = await ClienteDuo().capacidadesAgentes();
+      await _cloud.reportarCapacidades([
+        for (final capacidad in capacidades)
+          if (capacidad.disponible) capacidad.provider,
+      ]);
+      if (mounted) setState(_recargar);
+    } on Object {
+      // Sin servicio local o sin red: se conserva el último reporte Cloud.
+    }
   }
 
   Future<void> _invitar() async {
@@ -841,7 +855,12 @@ class _DialogTareaState extends State<_DialogTarea> {
                   child: Text('Sin asignar'),
                 ),
                 for (final m in widget.miembros)
-                  DropdownMenuItem<String?>(value: m.id, child: Text(m.email)),
+                  DropdownMenuItem<String?>(
+                    value: m.id,
+                    child: Text(
+                      '${m.email} · ${m.capacidades.isEmpty ? 'sin Codex/Claude reportado; ChatGPT/Grok' : m.capacidades.join(', ')}',
+                    ),
+                  ),
               ],
               onChanged: (value) => setState(() => _asignado = value),
             ),

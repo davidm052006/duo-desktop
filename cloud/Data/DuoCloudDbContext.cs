@@ -25,6 +25,7 @@ public sealed class DuoCloudDbContext(DbContextOptions<DuoCloudDbContext> option
             entity.Property(x => x.AuthSubject).HasMaxLength(256);
             entity.Property(x => x.Email).HasMaxLength(320);
             entity.Property(x => x.DisplayName).HasMaxLength(160);
+            entity.Property(x => x.AgentCapabilitiesJson).HasMaxLength(300);
         });
 
         model.Entity<Project>(entity =>

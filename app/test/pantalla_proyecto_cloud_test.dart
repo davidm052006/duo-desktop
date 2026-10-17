@@ -25,6 +25,7 @@ class _CloudFalso extends ClienteCloud {
       email: 'owner@example.test',
       nombre: 'Owner',
       rol: 'owner',
+      capacidades: ['codex'],
     ),
   ];
 

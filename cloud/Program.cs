@@ -124,6 +124,24 @@ app.MapGet("/api/projects", async (
     return Results.Ok(projects);
 }).RequireAuthorization();
 
+app.MapPost("/api/me/agent-capabilities", async (
+    ReportAgentCapabilitiesRequest request,
+    DuoCloudDbContext db,
+    CurrentUser currentUser,
+    CancellationToken ct) =>
+{
+    var user = await currentUser.GetOrCreateAsync(db, ct);
+    var providers = (request.Providers ?? [])
+        .Select(x => x.Trim().ToLowerInvariant())
+        .Where(WorkProviders.IsValid)
+        .Distinct(StringComparer.Ordinal)
+        .Order()
+        .ToArray();
+    user.AgentCapabilitiesJson = JsonSerializer.Serialize(providers);
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { providers });
+}).RequireAuthorization();
+
 app.MapPost("/api/projects", async (
     CreateProjectRequest request,
     DuoCloudDbContext db,
@@ -207,6 +225,7 @@ app.MapGet("/api/projects/{projectId:guid}/members", async (
             x.UserId,
             x.User!.Email,
             x.User.DisplayName,
+            agentCapabilities = x.User.AgentCapabilitiesJson,
             x.Role,
             x.JoinedAt,
         })
