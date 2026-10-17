@@ -243,10 +243,11 @@ jobs:
             echo "Previous ZIP unavailable; using full ZIP."
             exit 0
           fi
-          # Older releases may have a malformed manifest. An incremental
-          # package is an optimization only: retain the complete ZIP instead
-          # of failing the whole release in that case.
-          if ! BASE="$(python3 -c 'import json;print(json.load(open("artifacts/previous/latest-linux.json"))["version"])')"; then
+          # A legacy manifest ended with the literal characters "\\n".
+          # Normalize that harmless suffix so existing installations can
+          # still receive a compact delta. Any other malformed manifest falls
+          # back to the complete ZIP without failing the release.
+          if ! BASE="$(python3 -c 'import json; raw=open("artifacts/previous/latest-linux.json", encoding="utf-8").read().strip(); raw=raw.removesuffix(chr(92)+"n"); print(json.loads(raw)["version"])')"; then
             echo "Previous manifest is invalid; using full ZIP."
             exit 0
           fi
