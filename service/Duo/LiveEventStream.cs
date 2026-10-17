@@ -12,6 +12,7 @@ public sealed class LiveEventStream(
     DuoProjectLocator locator,
     BoardReader boardReader,
     TaskOwnerHistoryReader ownerHistory,
+    GitWorkspaceService workspaces,
     ILogger<LiveEventStream> log)
 {
     private static readonly Regex SessionFile = new(@"^(?<id>T-\d+)\.txt$", RegexOptions.Compiled);
@@ -57,6 +58,7 @@ public sealed class LiveEventStream(
                     owners[task.Id] = task.Owner;
 
                 await SendSessionAppendsAsync(socket, project, owners, positions, cancellationToken);
+                await SendAgentOutputAppendsAsync(socket, workspaces, positions, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -87,6 +89,33 @@ public sealed class LiveEventStream(
             {
                 break;
             }
+        }
+    }
+
+    private static async Task SendAgentOutputAppendsAsync(
+        WebSocket socket,
+        GitWorkspaceService workspaces,
+        Dictionary<string, long> positions,
+        CancellationToken cancellationToken)
+    {
+        foreach (var source in await workspaces.AgentOutputsAsync(cancellationToken))
+        {
+            var length = new FileInfo(source.Path).Length;
+            var position = positions.GetValueOrDefault(source.Path);
+            if (length < position) position = 0;
+            if (length == position) continue;
+
+            byte[] bytes;
+            await using (var stream = new FileStream(source.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                stream.Seek(position, SeekOrigin.Begin);
+                bytes = new byte[checked((int)(length - position))];
+                var read = await stream.ReadAsync(bytes.AsMemory(), cancellationToken);
+                if (read != bytes.Length) Array.Resize(ref bytes, read);
+            }
+            positions[source.Path] = position + bytes.Length;
+            if (bytes.Length > 0)
+                await SendEventAsync(socket, new AgentOutputEvent("agent_output", source.TaskId, source.Agent, Encoding.UTF8.GetString(bytes)), cancellationToken);
         }
     }
 

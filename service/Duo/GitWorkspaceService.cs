@@ -53,6 +53,28 @@ public sealed class GitWorkspaceService(IExecutableLocator executables, ILogger<
         return state.Repositories.TryGetValue(projectId, out var repo) ? repo : null;
     }
 
+    public async Task<WorkspaceInfo?> WorkspaceAsync(string projectId, string externalId, CancellationToken ct)
+    {
+        var state = await LoadAsync(ct);
+        var key = WorkspaceKey(projectId, externalId);
+        return state.Workspaces.TryGetValue(key, out var workspace) &&
+               Directory.Exists(workspace.WorktreePath)
+            ? workspace
+            : null;
+    }
+
+    public async Task<IReadOnlyList<AgentOutputSource>> AgentOutputsAsync(CancellationToken ct)
+    {
+        var state = await LoadAsync(ct);
+        return state.Workspaces.Values
+            .Select(workspace => new AgentOutputSource(
+                workspace.ExternalId,
+                workspace.Provider,
+                AgentOutputPath(workspace.WorkspaceId)))
+            .Where(source => File.Exists(source.Path))
+            .ToList();
+    }
+
     public async Task<WorkspaceInfo> PrepareAsync(
         string projectId,
         string externalId,
@@ -372,24 +394,53 @@ public sealed class GitWorkspaceService(IExecutableLocator executables, ILogger<
         return await PullRequestStatusAsync(workspaceId, number, ct);
     }
 
-    public async Task LaunchAgentAsync(string workspaceId, string provider, CancellationToken ct)
+    public async Task LaunchAgentAsync(string workspaceId, string provider, string prompt, CancellationToken ct)
     {
         if (provider is not ("codex" or "claude" or "gemini"))
             throw GitWorkspaceException.Invalid("Provider local no soportado.");
 
         var ws = await RequireWorkspaceAsync(workspaceId, ct);
         var executable = RequireExecutable(provider);
+        if (string.IsNullOrWhiteSpace(prompt))
+            throw GitWorkspaceException.Invalid("Las instrucciones de la tarea son obligatorias.");
+        if (prompt.Length > 50_000)
+            throw GitWorkspaceException.Invalid("Las instrucciones superan el límite de 50.000 caracteres.");
 
-        // Lanza el CLI sin shell y sin interpolar contenido de la tarea.
+        // No hay shell: título e instrucciones siempre viajan como un único
+        // argumento, sin que puedan convertirse en comandos locales.
         var start = new ProcessStartInfo(executable)
         {
             WorkingDirectory = ws.WorktreePath,
-            UseShellExecute = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
         };
+        switch (provider)
+        {
+            case "codex":
+                start.ArgumentList.Add("exec");
+                start.ArgumentList.Add("--approve-for-me");
+                start.ArgumentList.Add("--color");
+                start.ArgumentList.Add("never");
+                start.ArgumentList.Add(prompt);
+                break;
+            case "claude":
+                start.ArgumentList.Add("--print");
+                start.ArgumentList.Add(prompt);
+                break;
+            case "gemini":
+                start.ArgumentList.Add("--prompt");
+                start.ArgumentList.Add(prompt);
+                break;
+        }
         try
         {
-            _ = Process.Start(start)
+            var process = Process.Start(start)
                 ?? throw GitWorkspaceException.CommandFailed($"No se pudo iniciar {provider}.");
+            var outputPath = AgentOutputPath(ws.WorkspaceId);
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            _ = CaptureAgentOutputAsync(process, outputPath, provider, ws.ExternalId);
         }
         catch (System.ComponentModel.Win32Exception e)
         {
@@ -397,6 +448,55 @@ public sealed class GitWorkspaceService(IExecutableLocator executables, ILogger<
             throw GitWorkspaceException.CommandFailed($"No se pudo iniciar {provider}.");
         }
     }
+
+    private async Task CaptureAgentOutputAsync(Process process, string path, string provider, string taskId)
+    {
+        try
+        {
+            await using var writer = new StreamWriter(path, append: true, new UTF8Encoding(false))
+            {
+                AutoFlush = true,
+            };
+            await writer.WriteLineAsync($"[{DateTimeOffset.Now:O}] [{provider}] Iniciado para {taskId}.");
+            using var writerGate = new SemaphoreSlim(1, 1);
+            var stdout = CopyAgentStreamAsync(process.StandardOutput, writer, writerGate);
+            var stderr = CopyAgentStreamAsync(process.StandardError, writer, writerGate);
+            await Task.WhenAll(stdout, stderr, process.WaitForExitAsync());
+            await writer.WriteLineAsync($"[{DateTimeOffset.Now:O}] [{provider}] Finalizó con código {process.ExitCode}.");
+        }
+        catch (Exception e)
+        {
+            log.LogWarning(e, "No se pudo capturar la salida de {Provider} para {TaskId}", provider, taskId);
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+
+    private static async Task CopyAgentStreamAsync(StreamReader reader, StreamWriter writer, SemaphoreSlim writerGate)
+    {
+        var buffer = new char[4096];
+        int read;
+        while ((read = await reader.ReadAsync(buffer.AsMemory())) > 0)
+        {
+            await writerGate.WaitAsync();
+            try
+            {
+                await writer.WriteAsync(buffer.AsMemory(0, read));
+            }
+            finally
+            {
+                writerGate.Release();
+            }
+        }
+    }
+
+    private static string AgentOutputPath(string workspaceId) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "duo-desktop",
+        "agent-output",
+        workspaceId + ".log");
 
     private async Task<WorkspaceInfo> RequireWorkspaceAsync(string workspaceId, CancellationToken ct)
     {
@@ -636,6 +736,8 @@ public sealed record PullRequestCiStatus(
     string? Url,
     string? FailureLog);
 
+public sealed record AgentOutputSource(string TaskId, string Agent, string Path);
+
 public sealed record ConfigureRepositoryRequest(
     string? ProjectId,
     string? ProjectSlug,
@@ -656,7 +758,7 @@ public sealed record CommitWorkspaceRequest(
 
 public sealed record PushWorkspaceRequest(string? WorkspaceId);
 public sealed record ApplyPatchWorkspaceRequest(string? WorkspaceId, string? Patch);
-public sealed record LaunchAgentRequest(string? WorkspaceId, string? Provider);
+public sealed record LaunchAgentRequest(string? WorkspaceId, string? Provider, string? Prompt);
 
 public sealed record PullRequestWorkspaceRequest(
     string? WorkspaceId,

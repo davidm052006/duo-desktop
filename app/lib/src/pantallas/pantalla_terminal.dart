@@ -44,7 +44,7 @@ class PantallaTerminal extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           estado.eventosConectados
-              ? 'Eventos reales del servicio local. La pizarra y la salida de agentes llegan por WebSocket.'
+              ? 'Eventos reales del servicio local. Las sesiones de Duo y la salida de agentes locales llegan por WebSocket.'
               : 'El canal WebSocket no está disponible ahora. Duo conserva la última pizarra válida y usa sondeo mientras reconecta.',
           style: textos.bodySmall?.copyWith(color: paleta.tintaSecundaria),
         ),
@@ -70,7 +70,7 @@ class PantallaTerminal extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Esta vista es streaming de salida (Fase 2). La terminal PTY interactiva sigue reservada para la Fase 5.',
+                  'Codex, Claude y Gemini dejan aquí su salida estándar y de error; también se conservan las sesiones de Duo.',
                   style: textos.bodySmall?.copyWith(color: paleta.tintaTenue),
                 ),
               ),
@@ -89,7 +89,7 @@ class PantallaTerminal extends StatelessWidget {
                       padding: const EdgeInsets.all(24),
                       child: Text(
                         estado.eventosConectados
-                            ? 'Aún no ha llegado salida de agentes. Crea una tarea y aparecerá aquí cuando duo escriba su sesión.'
+                            ? 'Aún no ha llegado salida. Inicia un agente en una tarea y su progreso aparecerá aquí.'
                             : 'Esperando reconexión con /events…',
                         textAlign: TextAlign.center,
                         style: textos.bodySmall?.copyWith(

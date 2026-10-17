@@ -20,32 +20,33 @@ class _CloudFalso extends ClienteCloud {
 
   @override
   Future<List<MiembroCloud>> miembros(String projectId) async => const [
-        MiembroCloud(
-          id: 'member-1',
-          email: 'owner@example.test',
-          nombre: 'Owner',
-          rol: 'owner',
-        ),
-      ];
+    MiembroCloud(
+      id: 'member-1',
+      email: 'owner@example.test',
+      nombre: 'Owner',
+      rol: 'owner',
+    ),
+  ];
 
   @override
   Future<List<TareaCloud>> tareas(String projectId) async => _tareas;
 }
 
 ProyectoCloud _proyecto(String rol) => ProyectoCloud(
-      id: _proyectoBase.id,
-      nombre: _proyectoBase.nombre,
-      slug: _proyectoBase.slug,
-      repositorio: _proyectoBase.repositorio,
-      ramaObjetivo: _proyectoBase.ramaObjetivo,
-      rol: rol,
-    );
+  id: _proyectoBase.id,
+  nombre: _proyectoBase.nombre,
+  slug: _proyectoBase.slug,
+  repositorio: _proyectoBase.repositorio,
+  ramaObjetivo: _proyectoBase.ramaObjetivo,
+  rol: rol,
+);
 
 TareaCloud _tarea({String estado = 'pending', PullRequestCloud? pr}) =>
     TareaCloud(
       id: 'task-1',
       externalId: 'T-101',
       titulo: 'Tarea compartida',
+      instrucciones: 'Instrucciones de prueba',
       ownerAgent: 'codex',
       estado: estado,
       rama: 'codex/t-101',
@@ -56,15 +57,15 @@ TareaCloud _tarea({String estado = 'pending', PullRequestCloud? pr}) =>
     );
 
 Widget _app(String rol, List<TareaCloud> tareas) => MaterialApp(
-      theme: TemaDuo.claro(),
-      home: Scaffold(
-        body: PantallaProyectoCloud(
-          proyecto: _proyecto(rol),
-          volver: () {},
-          cloud: _CloudFalso(tareas),
-        ),
-      ),
-    );
+  theme: TemaDuo.claro(),
+  home: Scaffold(
+    body: PantallaProyectoCloud(
+      proyecto: _proyecto(rol),
+      volver: () {},
+      cloud: _CloudFalso(tareas),
+    ),
+  ),
+);
 
 void main() {
   testWidgets('viewer no ve acciones de escritura', (tester) async {
@@ -115,7 +116,9 @@ void main() {
     expect(find.text('Revisiones'), findsOneWidget);
   });
 
-  testWidgets('finalized se distingue de in_review en Revisiones', (tester) async {
+  testWidgets('finalized se distingue de in_review en Revisiones', (
+    tester,
+  ) async {
     final abierto = PullRequestCloud(
       numero: 10,
       url: 'https://example.test/10',

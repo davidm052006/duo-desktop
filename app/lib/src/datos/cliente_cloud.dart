@@ -33,15 +33,14 @@ class ProyectoCloud {
   final String rol;
 
   factory ProyectoCloud.desdeJson(Map<String, dynamic> json) => ProyectoCloud(
-        id: '${json['projectId'] ?? json['id'] ?? ''}',
-        nombre: '${json['name'] ?? ''}',
-        slug: '${json['slug'] ?? ''}',
-        repositorio: '${json['repositoryFullName'] ?? ''}',
-        ramaObjetivo: '${json['targetBranch'] ?? 'develop'}',
-        rol: '${json['role'] ?? 'viewer'}',
-      );
+    id: '${json['projectId'] ?? json['id'] ?? ''}',
+    nombre: '${json['name'] ?? ''}',
+    slug: '${json['slug'] ?? ''}',
+    repositorio: '${json['repositoryFullName'] ?? ''}',
+    ramaObjetivo: '${json['targetBranch'] ?? 'develop'}',
+    rol: '${json['role'] ?? 'viewer'}',
+  );
 }
-
 
 class UsuarioCloudActual {
   const UsuarioCloudActual({
@@ -76,11 +75,11 @@ class MiembroCloud {
   final String rol;
 
   factory MiembroCloud.desdeJson(Map<String, dynamic> json) => MiembroCloud(
-        id: '${json['userId'] ?? ''}',
-        email: '${json['email'] ?? ''}',
-        nombre: json['displayName'] == null ? null : '${json['displayName']}',
-        rol: '${json['role'] ?? 'viewer'}',
-      );
+    id: '${json['userId'] ?? ''}',
+    email: '${json['email'] ?? ''}',
+    nombre: json['displayName'] == null ? null : '${json['displayName']}',
+    rol: '${json['role'] ?? 'viewer'}',
+  );
 }
 
 class PullRequestCloud {
@@ -121,6 +120,7 @@ class TareaCloud {
     required this.id,
     required this.externalId,
     required this.titulo,
+    required this.instrucciones,
     required this.ownerAgent,
     required this.estado,
     required this.rama,
@@ -133,6 +133,7 @@ class TareaCloud {
   final String id;
   final String externalId;
   final String titulo;
+  final String instrucciones;
   final String ownerAgent;
   final String estado;
   final String rama;
@@ -142,25 +143,26 @@ class TareaCloud {
   final PullRequestCloud? pullRequest;
 
   factory TareaCloud.desdeJson(Map<String, dynamic> json) => TareaCloud(
-        id: '${json['id'] ?? ''}',
-        externalId: '${json['externalId'] ?? ''}',
-        titulo: '${json['title'] ?? ''}',
-        ownerAgent: '${json['ownerAgent'] ?? ''}',
-        estado: '${json['status'] ?? ''}',
-        rama: '${json['branch'] ?? ''}',
-        assignedUserId: json['assignedUserId'] == null
-            ? null
-            : '${json['assignedUserId']}',
-        assignedEmail: json['assignedEmail'] == null
-            ? null
-            : '${json['assignedEmail']}',
-        workProvider: '${json['workProvider'] ?? ''}',
-        pullRequest: json['pullRequest'] is Map<String, dynamic>
-            ? PullRequestCloud.desdeJson(
-                json['pullRequest'] as Map<String, dynamic>,
-              )
-            : null,
-      );
+    id: '${json['id'] ?? ''}',
+    externalId: '${json['externalId'] ?? ''}',
+    titulo: '${json['title'] ?? ''}',
+    instrucciones: '${json['instructions'] ?? ''}',
+    ownerAgent: '${json['ownerAgent'] ?? ''}',
+    estado: '${json['status'] ?? ''}',
+    rama: '${json['branch'] ?? ''}',
+    assignedUserId: json['assignedUserId'] == null
+        ? null
+        : '${json['assignedUserId']}',
+    assignedEmail: json['assignedEmail'] == null
+        ? null
+        : '${json['assignedEmail']}',
+    workProvider: '${json['workProvider'] ?? ''}',
+    pullRequest: json['pullRequest'] is Map<String, dynamic>
+        ? PullRequestCloud.desdeJson(
+            json['pullRequest'] as Map<String, dynamic>,
+          )
+        : null,
+  );
 }
 
 class InvitacionCloud {
@@ -179,13 +181,14 @@ class InvitacionCloud {
 
 class ClienteCloud {
   ClienteCloud({http.Client? cliente, this.tokenProvider})
-      : _cliente = cliente ?? http.Client();
+    : _cliente = cliente ?? http.Client();
 
   final http.Client _cliente;
   final String Function()? tokenProvider;
 
   String _token() {
-    final token = tokenProvider?.call() ??
+    final token =
+        tokenProvider?.call() ??
         Supabase.instance.client.auth.currentSession?.accessToken;
     if (token == null || token.isEmpty) {
       throw const FalloCloud('La sesión de Supabase no está disponible.');
@@ -229,7 +232,6 @@ class ClienteCloud {
 
     throw FalloCloud(mensaje, codigo: response.statusCode);
   }
-
 
   Future<UsuarioCloudActual> usuarioActual() async {
     final response = await _enviar('GET', '/api/me');
@@ -300,13 +302,17 @@ class ClienteCloud {
   }
 
   Future<void> aceptarInvitacion(String token) async {
-    await _enviar('POST', '/api/invitations/${Uri.encodeComponent(token)}/accept');
+    await _enviar(
+      'POST',
+      '/api/invitations/${Uri.encodeComponent(token)}/accept',
+    );
   }
 
   Future<void> upsertTarea({
     required String projectId,
     required String externalId,
     required String titulo,
+    required String instrucciones,
     required String ownerAgent,
     required String estado,
     required String rama,
@@ -319,6 +325,7 @@ class ClienteCloud {
       cuerpo: {
         'externalId': externalId,
         'title': titulo,
+        'instructions': instrucciones,
         'ownerAgent': ownerAgent,
         'status': estado,
         'branch': rama,

@@ -32,10 +32,10 @@ public sealed class UpdateClient(HttpClient http, string dataRoot)
         return manifest;
     }
 
-    public async Task<string> DownloadAsync(UpdateManifest manifest, IProgress<ProgressInfo> progress, CancellationToken ct)
+    public async Task<string> DownloadAsync(UpdateManifest manifest, IProgress<ProgressInfo> progress, CancellationToken ct, string suffix = "")
     {
         Directory.CreateDirectory(Path.Combine(dataRoot, "updates", "downloads"));
-        var output = Path.Combine(dataRoot, "updates", "downloads", $"{manifest.Version}.zip.part");
+        var output = Path.Combine(dataRoot, "updates", "downloads", $"{manifest.Version}{suffix}.zip.part");
         try
         {
             using var response = await http.GetAsync(manifest.Url, HttpCompletionOption.ResponseHeadersRead, ct);

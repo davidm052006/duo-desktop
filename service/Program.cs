@@ -216,6 +216,21 @@ app.MapGet("/git/repository/{projectId}", async (
         : Results.Ok(mapping);
 });
 
+app.MapGet("/git/workspaces", async (
+    HttpContext ctx,
+    string projectId,
+    string externalId,
+    GitWorkspaceService workspaces,
+    CancellationToken ct) =>
+{
+    if (!Authorized(ctx, token))
+        return Error(401, "unauthorized", "Token local ausente o inválido.");
+    var workspace = await workspaces.WorkspaceAsync(projectId, externalId, ct);
+    return workspace is null
+        ? Error(404, "workspace_not_found", "No hay workspace preparado para esta tarea.")
+        : Results.Ok(workspace);
+});
+
 app.MapPost("/git/repository", async (
     HttpContext ctx,
     ConfigureRepositoryRequest? request,
@@ -367,6 +382,7 @@ app.MapPost("/git/workspaces/agent", async (
         await workspaces.LaunchAgentAsync(
             request?.WorkspaceId ?? "",
             request?.Provider ?? "",
+            request?.Prompt ?? "",
             ct);
         return Results.Ok();
     }

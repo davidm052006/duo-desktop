@@ -52,7 +52,6 @@ class CapacidadAgenteLocal {
       );
 }
 
-
 class WorkspaceLocal {
   const WorkspaceLocal({
     required this.id,
@@ -69,12 +68,12 @@ class WorkspaceLocal {
   final String provider;
 
   factory WorkspaceLocal.desdeJson(Map<String, dynamic> json) => WorkspaceLocal(
-        id: '${json['workspaceId'] ?? ''}',
-        worktree: '${json['worktreePath'] ?? ''}',
-        rama: '${json['branch'] ?? ''}',
-        target: '${json['targetBranch'] ?? ''}',
-        provider: '${json['provider'] ?? ''}',
-      );
+    id: '${json['workspaceId'] ?? ''}',
+    worktree: '${json['worktreePath'] ?? ''}',
+    rama: '${json['branch'] ?? ''}',
+    target: '${json['targetBranch'] ?? ''}',
+    provider: '${json['provider'] ?? ''}',
+  );
 }
 
 class EstadoWorkspaceLocal {
@@ -383,7 +382,6 @@ class ClienteDuo {
     );
   }
 
-
   Future<String?> repositorioLocal(String projectId) async {
     try {
       final json = await _jsonRequest(
@@ -397,6 +395,7 @@ class ClienteDuo {
       rethrow;
     }
   }
+
   Future<void> configurarRepositorioLocal({
     required String projectId,
     required String projectSlug,
@@ -436,6 +435,22 @@ class ClienteDuo {
     return WorkspaceLocal.desdeJson(json);
   }
 
+  Future<WorkspaceLocal?> workspaceParaTarea({
+    required String projectId,
+    required String externalId,
+  }) async {
+    try {
+      final json = await _jsonRequest(
+        'GET',
+        '/git/workspaces?projectId=${Uri.encodeQueryComponent(projectId)}&externalId=${Uri.encodeQueryComponent(externalId)}',
+      );
+      return WorkspaceLocal.desdeJson(json);
+    } on FalloDuo catch (e) {
+      if (e.codigo == 'workspace_not_found') return null;
+      rethrow;
+    }
+  }
+
   Future<EstadoWorkspaceLocal> estadoWorkspace(String workspaceId) async {
     final json = await _jsonRequest(
       'GET',
@@ -464,11 +479,7 @@ class ClienteDuo {
     final json = await _jsonRequest(
       'POST',
       '/git/workspaces/commit',
-      body: {
-        'workspaceId': workspaceId,
-        'files': archivos,
-        'message': mensaje,
-      },
+      body: {'workspaceId': workspaceId, 'files': archivos, 'message': mensaje},
     );
     return '${json['sha'] ?? ''}';
   }
@@ -484,11 +495,16 @@ class ClienteDuo {
   Future<void> lanzarAgenteLocal({
     required String workspaceId,
     required String provider,
+    required String prompt,
   }) async {
     await _jsonRequest(
       'POST',
       '/git/workspaces/agent',
-      body: {'workspaceId': workspaceId, 'provider': provider},
+      body: {
+        'workspaceId': workspaceId,
+        'provider': provider,
+        'prompt': prompt,
+      },
     );
   }
 
@@ -553,9 +569,14 @@ class ClienteDuo {
       final uri = _config.ruta(ruta);
       respuesta = switch (metodo) {
         'GET' => await _http.get(uri, headers: headers).timeout(_espera),
-        'POST' => await _http
-            .post(uri, headers: headers, body: body == null ? null : jsonEncode(body))
-            .timeout(_espera),
+        'POST' =>
+          await _http
+              .post(
+                uri,
+                headers: headers,
+                body: body == null ? null : jsonEncode(body),
+              )
+              .timeout(_espera),
         _ => throw ArgumentError.value(metodo, 'metodo'),
       };
     } on TimeoutException {

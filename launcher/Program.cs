@@ -106,12 +106,35 @@ internal sealed class LauncherForm : Form
     {
         using var http = new HttpClient(); var client = new UpdateClient(http, _dataRoot);
         SetProgress(new(8, "Preparando descarga…"));
-        var zip = await client.DownloadAsync(update, new Progress<ProgressInfo>(SetProgress), ct);
-        SetProgress(new(72, "Verificando…", "Verificando SHA-256…"));
-        try { await UpdateClient.VerifySha256Async(zip, update.Sha256, ct); }
-        catch { if (File.Exists(zip)) File.Delete(zip); throw new InvalidDataException("Actualización dañada o incompleta. Se conservará la versión actual."); }
-        SetProgress(new(82, "Extrayendo…"));
-        var stage = client.ExtractToStaging(zip, update.Version);
+        string? stage = null;
+        if (update.DeltaBaseVersion == current.Version &&
+            !string.IsNullOrWhiteSpace(update.DeltaUrl) &&
+            !string.IsNullOrWhiteSpace(update.DeltaSha256) &&
+            Directory.Exists(store.VersionDirectory(current.Version)))
+        {
+            try
+            {
+                var delta = new UpdateManifest { Version = update.Version, Url = update.DeltaUrl, Sha256 = update.DeltaSha256 };
+                var zip = await client.DownloadAsync(delta, new Progress<ProgressInfo>(SetProgress), ct, "-delta");
+                await UpdateClient.VerifySha256Async(zip, delta.Sha256, ct);
+                stage = store.ExtractIncrementalToStaging(zip, current.Version, update.Version);
+            }
+            catch when (!ct.IsCancellationRequested)
+            {
+                // Un delta es una optimización: un fallo nunca bloquea el ZIP
+                // completo verificado ni compromete la versión actual.
+                stage = null;
+            }
+        }
+        if (stage is null)
+        {
+            var zip = await client.DownloadAsync(update, new Progress<ProgressInfo>(SetProgress), ct);
+            SetProgress(new(72, "Verificando…", "Verificando SHA-256…"));
+            try { await UpdateClient.VerifySha256Async(zip, update.Sha256, ct); }
+            catch { if (File.Exists(zip)) File.Delete(zip); throw new InvalidDataException("Actualización dañada o incompleta. Se conservará la versión actual."); }
+            SetProgress(new(82, "Extrayendo…"));
+            stage = client.ExtractToStaging(zip, update.Version);
+        }
         _installing = true; _cancel.Visible = false;
         SetProgress(new(92, "Instalando…"));
         store.ActivateStagedVersion(update.Version, stage);

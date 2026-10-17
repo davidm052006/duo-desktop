@@ -47,6 +47,11 @@ namespace DuoDesktop.Cloud.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
                     b.Property<string>("OwnerAgent")
                         .IsRequired()
                         .HasMaxLength(64)

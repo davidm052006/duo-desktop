@@ -27,6 +27,9 @@ public sealed class UpdateManifest
     public string Sha256 { get; init; } = "";
     public string MinimumLauncherVersion { get; init; } = "1.0.0";
     public bool Mandatory { get; init; }
+    public string? DeltaBaseVersion { get; init; }
+    public string? DeltaUrl { get; init; }
+    public string? DeltaSha256 { get; init; }
 }
 
 public sealed record ProgressInfo(int Percent, string Stage, string? Detail = null);

@@ -83,6 +83,7 @@ public sealed class DuoCloudDbContext(DbContextOptions<DuoCloudDbContext> option
             entity.HasIndex(x => new { x.ProjectId, x.ExternalId }).IsUnique();
             entity.Property(x => x.ExternalId).HasMaxLength(64);
             entity.Property(x => x.Title).HasMaxLength(500);
+            entity.Property(x => x.Instructions).HasMaxLength(20_000);
             entity.Property(x => x.OwnerAgent).HasMaxLength(64);
             entity.Property(x => x.Status).HasMaxLength(64);
             entity.Property(x => x.Branch).HasMaxLength(300);

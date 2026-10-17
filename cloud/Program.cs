@@ -367,6 +367,7 @@ app.MapGet("/api/projects/{projectId:guid}/tasks", async (
             x.Id,
             x.ExternalId,
             x.Title,
+            x.Instructions,
             x.OwnerAgent,
             x.Status,
             x.Branch,
@@ -406,6 +407,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
 
     var externalId = request.ExternalId?.Trim();
     var title = request.Title?.Trim();
+    var instructions = request.Instructions?.Trim() ?? "";
     var owner = request.OwnerAgent?.Trim();
     var status = request.Status?.Trim().ToLowerInvariant();
     var branch = request.Branch?.Trim();
@@ -413,6 +415,8 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
 
     if (new[] { externalId, title, owner, status, branch, workProvider }.Any(string.IsNullOrWhiteSpace))
         return ApiError(422, "invalid_task", "Los campos base de la tarea son obligatorios.");
+    if (instructions.Length > 20_000)
+        return ApiError(422, "invalid_task", "Las instrucciones no pueden superar 20.000 caracteres.");
 
     if (!TaskStatuses.IsValid(status!))
         return ApiError(422, "invalid_status", "Estado de tarea no soportado.");
@@ -442,6 +446,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
             ProjectId = projectId,
             ExternalId = externalId!,
             Title = title!,
+            Instructions = instructions,
             OwnerAgent = owner!,
             Status = status!,
             Branch = branch!,
@@ -456,6 +461,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
     else
     {
         task.Title = title!;
+        task.Instructions = instructions;
         task.OwnerAgent = owner!;
         task.Status = status!;
         task.Branch = branch!;
@@ -472,6 +478,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/upsert", async (
         task.ProjectId,
         task.ExternalId,
         task.Title,
+        task.Instructions,
         task.OwnerAgent,
         task.Status,
         task.Branch,
@@ -534,6 +541,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/start", async (
             task.ProjectId,
             task.ExternalId,
             task.Title,
+            task.Instructions,
             task.OwnerAgent,
             task.Status,
             task.Branch,
@@ -601,6 +609,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/submit", async (
             task.ProjectId,
             task.ExternalId,
             task.Title,
+            task.Instructions,
             task.OwnerAgent,
             task.Status,
             task.Branch,
@@ -741,6 +750,7 @@ app.MapPost("/api/projects/{projectId:guid}/tasks/{externalId}/pull-request", as
             task.ProjectId,
             task.ExternalId,
             task.Title,
+            task.Instructions,
             task.OwnerAgent,
             task.Status,
             task.Branch,

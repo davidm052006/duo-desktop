@@ -9,6 +9,7 @@ public sealed record InviteMemberRequest(string? Email, string? Role);
 public sealed record UpsertTaskRequest(
     string? ExternalId,
     string? Title,
+    string? Instructions,
     string? OwnerAgent,
     string? Status,
     string? Branch,

@@ -161,9 +161,7 @@ class _Contenido extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: TableroKanban(tareas: tablero.tareas),
-                      ),
+                      Expanded(child: TableroKanban(tareas: tablero.tareas)),
                       const SizedBox(width: _separacion),
                       SizedBox(
                         width: _anchoPanelLateral,
@@ -180,10 +178,7 @@ class _Contenido extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
-            SizedBox(
-              height: 560,
-              child: TableroKanban(tareas: tablero.tareas),
-            ),
+            SizedBox(height: 560, child: TableroKanban(tareas: tablero.tareas)),
             const SizedBox(height: 20),
             _PanelResumen(tablero: tablero),
           ],
@@ -287,7 +282,6 @@ class _Procedencia extends StatelessWidget {
   }
 }
 
-
 class _PantallaTableroCloud extends StatefulWidget {
   const _PantallaTableroCloud({required this.proyecto});
 
@@ -363,9 +357,9 @@ class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
             const SizedBox(width: 10),
             Text(
               widget.proyecto.nombre,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
             ),
           ],
         ),
@@ -385,9 +379,9 @@ class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
               child: Text(
                 widget.proyecto.repositorio,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: context.paleta.tintaTenue,
-                    ),
+                  fontFamily: 'monospace',
+                  color: context.paleta.tintaTenue,
+                ),
               ),
             ),
           ),
@@ -424,10 +418,7 @@ class _PantallaTableroCloudState extends State<_PantallaTableroCloud> {
           }
 
           final tareas = snapshot.data ?? const <TareaCloud>[];
-          return _KanbanCloud(
-            proyecto: widget.proyecto,
-            tareas: tareas,
-          );
+          return _KanbanCloud(proyecto: widget.proyecto, tareas: tareas);
         },
       ),
     );
@@ -527,9 +518,9 @@ class _ColumnaCloud extends StatelessWidget {
                   child: Text(
                     'Sin tareas',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: paleta.tintaTenue,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: paleta.tintaTenue),
                   ),
                 )
               else
@@ -552,7 +543,8 @@ class _ColumnaCloud extends StatelessWidget {
                           children: [
                             Text(
                               tarea.externalId,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
                                     fontFamily: 'monospace',
                                     color: paleta.acentoAlt,
                                   ),
@@ -566,14 +558,14 @@ class _ColumnaCloud extends StatelessWidget {
                             Text(
                               tarea.assignedEmail ?? tarea.ownerAgent,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: paleta.tintaSecundaria,
-                                  ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: paleta.tintaSecundaria),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               tarea.workProvider,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
                                     fontFamily: 'monospace',
                                     color: paleta.tintaTenue,
                                   ),
@@ -590,7 +582,6 @@ class _ColumnaCloud extends StatelessWidget {
     );
   }
 }
-
 
 class _DialogNuevaTareaCloud extends StatefulWidget {
   const _DialogNuevaTareaCloud({
@@ -610,6 +601,7 @@ class _DialogNuevaTareaCloud extends StatefulWidget {
 class _DialogNuevaTareaCloudState extends State<_DialogNuevaTareaCloud> {
   final _id = TextEditingController();
   final _titulo = TextEditingController();
+  final _instrucciones = TextEditingController();
   final _rama = TextEditingController();
   String? _asignado;
   String _provider = 'chatgpt';
@@ -620,6 +612,7 @@ class _DialogNuevaTareaCloudState extends State<_DialogNuevaTareaCloud> {
   void dispose() {
     _id.dispose();
     _titulo.dispose();
+    _instrucciones.dispose();
     _rama.dispose();
     super.dispose();
   }
@@ -644,6 +637,7 @@ class _DialogNuevaTareaCloudState extends State<_DialogNuevaTareaCloud> {
         projectId: widget.proyecto.id,
         externalId: id,
         titulo: titulo,
+        instrucciones: _instrucciones.text.trim(),
         ownerAgent: _provider,
         estado: 'pending',
         rama: rama,
@@ -663,105 +657,118 @@ class _DialogNuevaTareaCloudState extends State<_DialogNuevaTareaCloud> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        backgroundColor: context.paleta.panel,
-        title: Text('Nueva tarea · ${widget.proyecto.nombre}'),
-        content: SizedBox(
-          width: 580,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextField(
-                  controller: _id,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'ID',
-                    hintText: 'T-001',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _titulo,
-                  decoration: const InputDecoration(labelText: 'Título'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  initialValue: _asignado,
-                  decoration: const InputDecoration(labelText: 'Asignar a'),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Sin asignar'),
-                    ),
-                    for (final miembro in widget.miembros)
-                      DropdownMenuItem<String?>(
-                        value: miembro.id,
-                        child: Text(
-                          miembro.nombre?.trim().isNotEmpty == true
-                              ? '${miembro.nombre} · ${miembro.email}'
-                              : miembro.email,
-                        ),
-                      ),
-                  ],
-                  onChanged: _guardando
-                      ? null
-                      : (value) => setState(() => _asignado = value),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _provider,
-                  decoration: const InputDecoration(labelText: 'Agente / proveedor'),
-                  items: const [
-                    DropdownMenuItem(value: 'chatgpt', child: Text('ChatGPT Web')),
-                    DropdownMenuItem(value: 'grok', child: Text('Grok Web')),
-                    DropdownMenuItem(value: 'codex', child: Text('Codex')),
-                    DropdownMenuItem(value: 'claude', child: Text('Claude Code')),
-                    DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
-                  ],
-                  onChanged: _guardando
-                      ? null
-                      : (value) {
-                          if (value != null) setState(() => _provider = value);
-                        },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _rama,
-                  decoration: InputDecoration(
-                    labelText: 'Rama de trabajo',
-                    hintText: 'feature/T-001-descripcion',
-                    helperText: 'Rama objetivo del proyecto: ${widget.proyecto.ramaObjetivo}',
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _error!,
-                      style: TextStyle(color: context.paleta.critico),
-                    ),
-                  ),
-                ],
-              ],
+    backgroundColor: context.paleta.panel,
+    title: Text('Nueva tarea · ${widget.proyecto.nombre}'),
+    content: SizedBox(
+      width: 580,
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            TextField(
+              controller: _id,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'ID',
+                hintText: 'T-001',
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _titulo,
+              decoration: const InputDecoration(labelText: 'Título'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _instrucciones,
+              minLines: 4,
+              maxLines: 10,
+              decoration: const InputDecoration(
+                labelText: 'Instrucciones para el agente',
+                hintText: 'Describe el resultado esperado y cómo validarlo.',
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              initialValue: _asignado,
+              decoration: const InputDecoration(labelText: 'Asignar a'),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Sin asignar'),
+                ),
+                for (final miembro in widget.miembros)
+                  DropdownMenuItem<String?>(
+                    value: miembro.id,
+                    child: Text(
+                      miembro.nombre?.trim().isNotEmpty == true
+                          ? '${miembro.nombre} · ${miembro.email}'
+                          : miembro.email,
+                    ),
+                  ),
+              ],
+              onChanged: _guardando
+                  ? null
+                  : (value) => setState(() => _asignado = value),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _provider,
+              decoration: const InputDecoration(
+                labelText: 'Agente / proveedor',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'chatgpt', child: Text('ChatGPT Web')),
+                DropdownMenuItem(value: 'grok', child: Text('Grok Web')),
+                DropdownMenuItem(value: 'codex', child: Text('Codex')),
+                DropdownMenuItem(value: 'claude', child: Text('Claude Code')),
+                DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
+              ],
+              onChanged: _guardando
+                  ? null
+                  : (value) {
+                      if (value != null) setState(() => _provider = value);
+                    },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _rama,
+              decoration: InputDecoration(
+                labelText: 'Rama de trabajo',
+                hintText: 'feature/T-001-descripcion',
+                helperText:
+                    'Rama objetivo del proyecto: ${widget.proyecto.ramaObjetivo}',
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: context.paleta.critico),
+                ),
+              ),
+            ],
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: _guardando ? null : () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton.icon(
-            onPressed: _guardando ? null : _crear,
-            icon: _guardando
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.add_task, size: 17),
-            label: Text(_guardando ? 'Creando…' : 'Crear y asignar'),
-          ),
-        ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _guardando ? null : () => Navigator.of(context).pop(false),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton.icon(
+        onPressed: _guardando ? null : _crear,
+        icon: _guardando
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add_task, size: 17),
+        label: Text(_guardando ? 'Creando…' : 'Crear y asignar'),
+      ),
+    ],
+  );
 }

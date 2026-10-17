@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.IO.Compression;
+using System.Security.Cryptography;
 
 namespace DuoLauncher;
 
@@ -56,6 +58,55 @@ public sealed class ReleaseStore
         else Directory.Move(pending, destination); // atomic rename within versions volume
     }
 
+    public string ExtractIncrementalToStaging(string archivePath, string baseVersion, string version)
+    {
+        var previous = VersionDirectory(baseVersion);
+        ValidatePayload(previous);
+        var staging = Path.Combine(InstallRoot, "updates", "staging", $"{version}-delta-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(staging);
+        try
+        {
+            using var archive = ZipFile.OpenRead(archivePath);
+            var indexEntry = archive.GetEntry("delta-index.json")
+                ?? throw new InvalidDataException("Falta el índice del paquete incremental.");
+            using var index = JsonDocument.Parse(indexEntry.Open());
+            var root = index.RootElement;
+            if (!string.Equals(root.GetProperty("baseVersion").GetString(), baseVersion, StringComparison.Ordinal))
+                throw new InvalidDataException("El paquete incremental corresponde a otra versión.");
+
+            var expected = root.GetProperty("files").EnumerateObject()
+                .ToDictionary(item => item.Name, item => item.Value.GetString() ?? "", StringComparer.Ordinal);
+            var reused = root.GetProperty("reused").EnumerateObject()
+                .ToDictionary(item => item.Name, item => item.Value.GetString() ?? "", StringComparer.Ordinal);
+            foreach (var pair in reused)
+                if (!expected.TryGetValue(pair.Key, out var hash) || !string.Equals(hash, pair.Value, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Índice incremental inconsistente.");
+
+            foreach (var pair in expected)
+            {
+                var relative = pair.Key.Replace('/', Path.DirectorySeparatorChar);
+                var destination = SafeChild(staging, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                if (reused.ContainsKey(pair.Key))
+                    File.Copy(SafeChild(previous, relative), destination, true);
+                else
+                    (archive.GetEntry(pair.Key) ?? throw new InvalidDataException($"Falta archivo modificado: {pair.Key}"))
+                        .ExtractToFile(destination, true);
+                using var file = File.OpenRead(destination);
+                var actual = Convert.ToHexString(SHA256.HashData(file));
+                if (!string.Equals(actual, pair.Value, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"SHA-256 incorrecto: {pair.Key}");
+            }
+            ValidatePayload(staging);
+            return staging;
+        }
+        catch
+        {
+            if (Directory.Exists(staging)) Directory.Delete(staging, true);
+            throw;
+        }
+    }
+
     public void KeepCurrentAndPrevious()
     {
         var current = ReadCurrent();
@@ -74,5 +125,13 @@ public sealed class ReleaseStore
             var relative = Path.GetRelativePath(source, file); var target = Path.Combine(destination, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!); File.Copy(file, target, true);
         }
+    }
+
+    private static string SafeChild(string root, string relative)
+    {
+        var full = Path.GetFullPath(Path.Combine(root, relative));
+        if (!full.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Ruta insegura en paquete incremental.");
+        return full;
     }
 }

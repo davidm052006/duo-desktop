@@ -50,6 +50,7 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
       (_) => const <CapacidadAgenteLocal>[],
     );
     _cargarRepo();
+    _cargarWorkspace();
     _programarSeguimientoCi();
   }
 
@@ -63,7 +64,8 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
   @override
   void didUpdateWidget(covariant PanelTrabajoLocal oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tarea.pullRequest?.numero != widget.tarea.pullRequest?.numero ||
+    if (oldWidget.tarea.pullRequest?.numero !=
+            widget.tarea.pullRequest?.numero ||
         oldWidget.tarea.estado != widget.tarea.estado) {
       _programarSeguimientoCi();
     }
@@ -76,7 +78,9 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
         widget.tarea.pullRequest == null) {
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _comprobarCiYFinalizar());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _comprobarCiYFinalizar(),
+    );
     _ciTimer = Timer.periodic(
       const Duration(seconds: 30),
       (_) => _comprobarCiYFinalizar(),
@@ -89,6 +93,28 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
       if (mounted) setState(() => _repoLocal = path);
     } on Object {
       // La tarea sigue usable aunque el servicio local aún no esté disponible.
+    }
+  }
+
+  Future<void> _cargarWorkspace() async {
+    try {
+      final workspace = await _duo.workspaceParaTarea(
+        projectId: widget.proyecto.id,
+        externalId: widget.tarea.externalId,
+      );
+      if (workspace == null) {
+        return;
+      }
+      final estado = await _duo.estadoWorkspace(workspace.id);
+      if (mounted) {
+        setState(() {
+          _workspace = workspace;
+          _estado = estado;
+        });
+      }
+    } on Object {
+      // El botón Preparar trabajo sigue permitiendo recuperarse si el servicio
+      // local aún no está disponible o se eliminó el worktree.
     }
   }
 
@@ -144,11 +170,14 @@ class _PanelTrabajoLocalState extends State<PanelTrabajoLocal> {
     });
   }
 
-  String _contexto(WorkspaceLocal ws) => '''
+  String _contexto(WorkspaceLocal ws) =>
+      '''
 Proyecto: ${widget.proyecto.nombre}
 Repositorio: ${widget.proyecto.repositorio}
 Tarea: ${widget.tarea.externalId}
 Título: ${widget.tarea.titulo}
+Instrucciones:
+${widget.tarea.instrucciones.isEmpty ? '(Sin instrucciones adicionales.)' : widget.tarea.instrucciones}
 Provider: ${widget.tarea.workProvider}
 Branch: ${ws.rama}
 Target: ${widget.proyecto.ramaObjetivo}
@@ -158,9 +187,12 @@ Trabaja únicamente dentro de este workspace.
 No hagas merge.
 No hagas force-push.
 No modifiques credenciales.
+Al finalizar, deja en tu respuesta un resumen breve, los archivos modificados y
+las validaciones ejecutadas. Esa salida se mostrará al usuario en Terminal.
 ''';
 
-  String _promptFallback(WorkspaceLocal ws) => '''
+  String _promptFallback(WorkspaceLocal ws) =>
+      '''
 ${_contexto(ws)}
 
 No tienes acceso directo al workspace desde este chat. Resuelve la tarea y
@@ -204,12 +236,14 @@ fuera del parche. No incluyas secretos ni credenciales.
       (capacidad) => capacidad.provider == provider && capacidad.disponible,
     );
     if (!disponible) {
+      final fallback = await _elegirFallback();
+      if (fallback == null) return;
       await Clipboard.setData(ClipboardData(text: _promptFallback(ws)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Ese agente no está instalado. Copié un prompt para usarlo en un chat.',
+              '$provider no está instalado. Copié la tarea para abrirla con $fallback.',
             ),
           ),
         );
@@ -221,9 +255,43 @@ fuera del parche. No incluyas secretos ni credenciales.
       await _duo.lanzarAgenteLocal(
         workspaceId: ws.id,
         provider: provider,
+        prompt: _contexto(ws),
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$provider recibió la tarea; su salida aparecerá en Terminal.',
+            ),
+          ),
+        );
+      }
     });
   }
+
+  Future<String?> _elegirFallback() => showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Agente local no disponible'),
+      content: const Text(
+        'Puedes continuar la misma tarea en un chat. Se copiarán el contexto y las instrucciones.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context, 'Grok'),
+          child: const Text('Usar Grok'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, 'ChatGPT'),
+          child: const Text('Usar ChatGPT'),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _recogerResultado() async {
     final data = await Clipboard.getData('text/plain');
@@ -294,7 +362,8 @@ fuera del parche. No incluyas secretos ni credenciales.
       final pr = await _duo.crearOEncontrarPullRequest(
         workspaceId: ws.id,
         titulo: '${widget.tarea.externalId}: ${widget.tarea.titulo}',
-        cuerpo: 'Resultado recogido y revisado por Duo para ${widget.tarea.externalId}.',
+        cuerpo:
+            'Resultado recogido y revisado por Duo para ${widget.tarea.externalId}.',
       );
       await _sincronizarPr(pr);
       await widget.cloud.entregarTarea(
@@ -306,17 +375,23 @@ fuera del parche. No incluyas secretos ni credenciales.
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Resultado aprobado. PR #${pr.numero} creado.')),
+          SnackBar(
+            content: Text('Resultado aprobado. PR #${pr.numero} creado.'),
+          ),
         );
       }
     });
   }
 
-  Future<_RevisionGemini> _revisarConGemini(String apiKey, String resultado) async {
+  Future<_RevisionGemini> _revisarConGemini(
+    String apiKey,
+    String resultado,
+  ) async {
     final uri = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',
     );
-    final prompt = '''
+    final prompt =
+        '''
 Revisa rápidamente este resultado para una tarea de software.
 
 Proyecto: ${widget.proyecto.nombre}
@@ -333,22 +408,16 @@ $resultado
 
     final response = await http.post(
       uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
+      headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
       body: jsonEncode({
         'contents': [
           {
             'parts': [
-              {'text': prompt}
-            ]
-          }
+              {'text': prompt},
+            ],
+          },
         ],
-        'generationConfig': {
-          'temperature': 0.1,
-          'maxOutputTokens': 300,
-        },
+        'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 300},
       }),
     );
 
@@ -360,8 +429,12 @@ $resultado
     }
 
     final decoded = jsonDecode(response.body);
-    final candidates = decoded is Map<String, dynamic> ? decoded['candidates'] : null;
-    final first = candidates is List && candidates.isNotEmpty ? candidates.first : null;
+    final candidates = decoded is Map<String, dynamic>
+        ? decoded['candidates']
+        : null;
+    final first = candidates is List && candidates.isNotEmpty
+        ? candidates.first
+        : null;
     final content = first is Map ? first['content'] : null;
     final parts = content is Map ? content['parts'] : null;
     final text = parts is List && parts.isNotEmpty && parts.first is Map
@@ -373,10 +446,7 @@ $resultado
         'Gemini no devolvió una revisión utilizable.',
       );
     }
-    return _RevisionGemini(
-      text.toUpperCase().startsWith('APROBADO'),
-      text,
-    );
+    return _RevisionGemini(text.toUpperCase().startsWith('APROBADO'), text);
   }
 
   Future<void> _commit() async {
@@ -392,10 +462,8 @@ $resultado
     final resultado = await showDialog<_CommitSeleccion>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _DialogCommit(
-        tarea: widget.tarea,
-        archivos: _estado!.archivos,
-      ),
+      builder: (_) =>
+          _DialogCommit(tarea: widget.tarea, archivos: _estado!.archivos),
     );
     if (resultado == null) return;
 
@@ -424,7 +492,8 @@ $resultado
       final pr = await _duo.crearOEncontrarPullRequest(
         workspaceId: ws.id,
         titulo: '${widget.tarea.externalId}: ${widget.tarea.titulo}',
-        cuerpo: 'Trabajo preparado desde Duo Desktop para ${widget.tarea.externalId}.',
+        cuerpo:
+            'Trabajo preparado desde Duo Desktop para ${widget.tarea.externalId}.',
       );
       await _sincronizarPr(pr);
     });
@@ -551,206 +620,211 @@ $resultado
 
   @override
   Widget build(BuildContext context) => FutureBuilder<UsuarioCloudActual>(
-        future: _usuario,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            if (snapshot.hasError) {
-              return Text(
-                'No se pudo comprobar la identidad Cloud.',
-                style: TextStyle(color: context.paleta.aviso),
-              );
-            }
-            return const LinearProgressIndicator(minHeight: 2);
-          }
+    future: _usuario,
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        if (snapshot.hasError) {
+          return Text(
+            'No se pudo comprobar la identidad Cloud.',
+            style: TextStyle(color: context.paleta.aviso),
+          );
+        }
+        return const LinearProgressIndicator(minHeight: 2);
+      }
 
-          final propia = widget.tarea.assignedUserId != null &&
-              widget.tarea.assignedUserId == snapshot.data!.id;
-          final esOwner = widget.proyecto.rol == 'owner';
-          if (!propia && !esOwner) {
-            return Text(
-              widget.tarea.assignedUserId == null
-                  ? 'Tarea sin asignar: acciones locales deshabilitadas.'
-                  : 'Asignada a otro miembro: solo lectura local.',
-              style: Theme.of(context).textTheme.bodySmall,
-            );
-          }
+      final propia =
+          widget.tarea.assignedUserId != null &&
+          widget.tarea.assignedUserId == snapshot.data!.id;
+      final esOwner = widget.proyecto.rol == 'owner';
+      if (!propia && !esOwner) {
+        return Text(
+          widget.tarea.assignedUserId == null
+              ? 'Tarea sin asignar: acciones locales deshabilitadas.'
+              : 'Asignada a otro miembro: solo lectura local.',
+          style: Theme.of(context).textTheme.bodySmall,
+        );
+      }
 
-          final ws = _workspace;
-          final estado = _estado;
-          final esLocal = const {'codex', 'claude', 'gemini'}
-              .contains(widget.tarea.workProvider);
+      final ws = _workspace;
+      final estado = _estado;
+      final esLocal = const {
+        'codex',
+        'claude',
+        'gemini',
+      }.contains(widget.tarea.workProvider);
 
-          return Tarjeta(
-            titulo: 'Workspace local',
-            icono: Icons.terminal_outlined,
-            sufijo: ws == null
-                ? Insignia('SIN PREPARAR', tono: context.paleta.aviso)
-                : Insignia(ws.rama, tono: context.paleta.acentoAlt, mono: true),
-            hijo: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_repoLocal != null)
-                  Mono(_repoLocal!, color: context.paleta.tintaSecundaria)
-                else
-                  Text(
-                    'Configura qué copia local corresponde a este proyecto.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                const SizedBox(height: 12),
-                FutureBuilder<List<CapacidadAgenteLocal>>(
-                  future: _capacidades,
-                  builder: (context, caps) {
-                    final provider = widget.tarea.workProvider;
-                    final web = provider == 'chatgpt' || provider == 'grok';
-                    final disponible = web ||
-                        (caps.data ?? const <CapacidadAgenteLocal>[]).any(
-                          (x) => x.provider == provider && x.disponible,
-                        );
-                    return Text(
-                      disponible
-                          ? 'Agente asignado disponible en este equipo.'
-                          : 'Agente asignado no detectado: Duo usará un prompt para chat.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: disponible
-                                ? context.paleta.bien
-                                : context.paleta.aviso,
-                          ),
+      return Tarjeta(
+        titulo: 'Workspace local',
+        icono: Icons.terminal_outlined,
+        sufijo: ws == null
+            ? Insignia('SIN PREPARAR', tono: context.paleta.aviso)
+            : Insignia(ws.rama, tono: context.paleta.acentoAlt, mono: true),
+        hijo: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_repoLocal != null)
+              Mono(_repoLocal!, color: context.paleta.tintaSecundaria)
+            else
+              Text(
+                'Configura qué copia local corresponde a este proyecto.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            const SizedBox(height: 12),
+            FutureBuilder<List<CapacidadAgenteLocal>>(
+              future: _capacidades,
+              builder: (context, caps) {
+                final provider = widget.tarea.workProvider;
+                final web = provider == 'chatgpt' || provider == 'grok';
+                final disponible =
+                    web ||
+                    (caps.data ?? const <CapacidadAgenteLocal>[]).any(
+                      (x) => x.provider == provider && x.disponible,
                     );
-                  },
+                return Text(
+                  disponible
+                      ? 'Agente asignado disponible en este equipo.'
+                      : 'Agente asignado no detectado: Duo usará un prompt para chat.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: disponible
+                        ? context.paleta.bien
+                        : context.paleta.aviso,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _ocupado ? null : _configurarRepo,
+                  icon: const Icon(Icons.folder_open, size: 16),
+                  label: const Text('Configurar repo'),
                 ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _ocupado ? null : _configurarRepo,
-                      icon: const Icon(Icons.folder_open, size: 16),
-                      label: const Text('Configurar repo'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: _ocupado ? null : _preparar,
-                      icon: const Icon(Icons.account_tree_outlined, size: 16),
-                      label: const Text('Preparar trabajo'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _ocupado ? null : _copiarContexto,
-                      icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copiar contexto'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _ocupado ? null : _abrirAgente,
-                      icon: Icon(
-                        esLocal ? Icons.terminal : Icons.chat_bubble_outline,
-                        size: 16,
-                      ),
-                      label: Text(esLocal ? 'Abrir agente / fallback chat' : 'Prompt para chat'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: _ocupado ? null : _recogerResultado,
-                      icon: const Icon(Icons.content_paste_go_outlined, size: 16),
-                      label: const Text('Recoger resultado'),
-                    ),
-                  ],
+                FilledButton.icon(
+                  onPressed: _ocupado ? null : _preparar,
+                  icon: const Icon(Icons.account_tree_outlined, size: 16),
+                  label: const Text('Preparar trabajo'),
                 ),
-                if (ws != null) ...[
-                  const SizedBox(height: 12),
-                  Mono(ws.worktree, color: context.paleta.tintaTenue),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _ocupado ? null : _actualizarEstado,
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: const Text('Cambios'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _ocupado ? null : _commit,
-                        icon: const Icon(Icons.commit, size: 16),
-                        label: const Text('Commit'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _ocupado ? null : _push,
-                        icon: const Icon(Icons.cloud_upload_outlined, size: 16),
-                        label: const Text('Push'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: _ocupado ? null : _crearPr,
-                        icon: const Icon(Icons.merge_type, size: 16),
-                        label: Text(
-                          widget.tarea.pullRequest == null ? 'Crear PR' : 'Ver/usar PR',
-                        ),
-                      ),
-                      if (widget.tarea.pullRequest != null)
-                        OutlinedButton.icon(
-                          onPressed: _ocupado ? null : _sincronizarPrReal,
-                          icon: const Icon(Icons.sync, size: 16),
-                          label: const Text('Sincronizar GitHub'),
-                        ),
-                    ],
+                OutlinedButton.icon(
+                  onPressed: _ocupado ? null : _copiarContexto,
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: const Text('Copiar contexto'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _ocupado ? null : _abrirAgente,
+                  icon: Icon(
+                    esLocal ? Icons.terminal : Icons.chat_bubble_outline,
+                    size: 16,
                   ),
-                ],
-                if (estado != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    estado.dirty
-                        ? '${estado.archivos.length} archivo(s) cambiado(s) · ↑${estado.ahead} ↓${estado.behind}'
-                        : 'Workspace limpio · ↑${estado.ahead} ↓${estado.behind}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  if (estado.archivos.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    for (final archivo in estado.archivos.take(8))
-                      Mono(archivo, color: context.paleta.tintaSecundaria),
-                  ],
-                ],
-                if (_ultimoFalloCi != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'CI falló. La tarea sigue en revisión:',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: context.paleta.critico),
-                  ),
-                  const SizedBox(height: 6),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 220),
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        _ultimoFalloCi!,
-                        style: const TextStyle(fontFamily: 'monospace'),
-                      ),
-                    ),
-                  ),
-                ],
-                if (esOwner &&
-                    widget.tarea.estado == 'in_review' &&
-                    widget.tarea.pullRequest != null) ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _ciConsultando ? null : _comprobarCiYFinalizar,
-                    icon: const Icon(Icons.fact_check_outlined, size: 16),
-                    label: const Text('Comprobar CI ahora'),
-                  ),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: context.paleta.critico),
-                  ),
-                ],
+                  label: Text(esLocal ? 'Iniciar agente' : 'Prompt para chat'),
+                ),
+                FilledButton.icon(
+                  onPressed: _ocupado ? null : _recogerResultado,
+                  icon: const Icon(Icons.content_paste_go_outlined, size: 16),
+                  label: const Text('Recoger resultado'),
+                ),
               ],
             ),
-          );
-        },
+            if (ws != null) ...[
+              const SizedBox(height: 12),
+              Mono(ws.worktree, color: context.paleta.tintaTenue),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _ocupado ? null : _actualizarEstado,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Cambios'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _ocupado ? null : _commit,
+                    icon: const Icon(Icons.commit, size: 16),
+                    label: const Text('Commit'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _ocupado ? null : _push,
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+                    label: const Text('Push'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _ocupado ? null : _crearPr,
+                    icon: const Icon(Icons.merge_type, size: 16),
+                    label: Text(
+                      widget.tarea.pullRequest == null
+                          ? 'Crear PR'
+                          : 'Ver/usar PR',
+                    ),
+                  ),
+                  if (widget.tarea.pullRequest != null)
+                    OutlinedButton.icon(
+                      onPressed: _ocupado ? null : _sincronizarPrReal,
+                      icon: const Icon(Icons.sync, size: 16),
+                      label: const Text('Sincronizar GitHub'),
+                    ),
+                ],
+              ),
+            ],
+            if (estado != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                estado.dirty
+                    ? '${estado.archivos.length} archivo(s) cambiado(s) · ↑${estado.ahead} ↓${estado.behind}'
+                    : 'Workspace limpio · ↑${estado.ahead} ↓${estado.behind}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (estado.archivos.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                for (final archivo in estado.archivos.take(8))
+                  Mono(archivo, color: context.paleta.tintaSecundaria),
+              ],
+            ],
+            if (_ultimoFalloCi != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'CI falló. La tarea sigue en revisión:',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: context.paleta.critico),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    _ultimoFalloCi!,
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
+            ],
+            if (esOwner &&
+                widget.tarea.estado == 'in_review' &&
+                widget.tarea.pullRequest != null) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _ciConsultando ? null : _comprobarCiYFinalizar,
+                icon: const Icon(Icons.fact_check_outlined, size: 16),
+                label: const Text('Comprobar CI ahora'),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: context.paleta.critico),
+              ),
+            ],
+          ],
+        ),
       );
+    },
+  );
 }
 
 class _RevisionGemini {
@@ -765,47 +839,47 @@ class _DialogConfirmarResultado extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Confirmar resultado recogido'),
-        content: SizedBox(
-          width: 760,
-          height: 520,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Duo leerá este contenido del portapapeles, lo revisará con Gemini y, '
-                'si se aprueba, intentará aplicarlo como unified diff.',
+    title: const Text('Confirmar resultado recogido'),
+    content: SizedBox(
+      width: 760,
+      height: 520,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Duo leerá este contenido del portapapeles, lo revisará con Gemini y, '
+            'si se aprueba, intentará aplicarlo como unified diff.',
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: context.paleta.rejilla),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: context.paleta.rejilla),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(12),
-                    child: SelectableText(
-                      resultado,
-                      style: const TextStyle(fontFamily: 'monospace'),
-                    ),
-                  ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: SelectableText(
+                  resultado,
+                  style: const TextStyle(fontFamily: 'monospace'),
                 ),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirmar y revisar'),
+            ),
           ),
         ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, true),
+        child: const Text('Confirmar y revisar'),
+      ),
+    ],
+  );
 }
 
 class _DialogGeminiKey extends StatefulWidget {
@@ -826,38 +900,38 @@ class _DialogGeminiKeyState extends State<_DialogGeminiKey> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Revisión rápida con Gemini'),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Pega tu clave de Gemini API. Duo la usa solo para esta revisión '
-                'y no la guarda.',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _key,
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(labelText: 'Gemini API key'),
-              ),
-            ],
+    title: const Text('Revisión rápida con Gemini'),
+    content: SizedBox(
+      width: 520,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Pega tu clave de Gemini API. Duo la usa solo para esta revisión '
+            'y no la guarda.',
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, _key.text.trim()),
-            child: const Text('Revisar'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _key,
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: const InputDecoration(labelText: 'Gemini API key'),
           ),
         ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _key.text.trim()),
+        child: const Text('Revisar'),
+      ),
+    ],
+  );
 }
 
 class _CommitSeleccion {
@@ -867,10 +941,7 @@ class _CommitSeleccion {
 }
 
 class _DialogCommit extends StatefulWidget {
-  const _DialogCommit({
-    required this.tarea,
-    required this.archivos,
-  });
+  const _DialogCommit({required this.tarea, required this.archivos});
 
   final TareaCloud tarea;
   final List<String> archivos;
@@ -899,57 +970,57 @@ class _DialogCommitState extends State<_DialogCommit> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        backgroundColor: context.paleta.panel,
-        title: const Text('Commit explícito'),
-        content: SizedBox(
-          width: 620,
-          height: 480,
-          child: Column(
-            children: [
-              TextField(
-                controller: _mensaje,
-                decoration: const InputDecoration(labelText: 'Mensaje'),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView(
-                  children: [
-                    for (final archivo in widget.archivos)
-                      CheckboxListTile(
-                        value: _seleccionados.contains(archivo),
-                        title: Mono(archivo),
-                        onChanged: (value) => setState(() {
-                          if (value == true) {
-                            _seleccionados.add(archivo);
-                          } else {
-                            _seleccionados.remove(archivo);
-                          }
-                        }),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+    backgroundColor: context.paleta.panel,
+    title: const Text('Commit explícito'),
+    content: SizedBox(
+      width: 620,
+      height: 480,
+      child: Column(
+        children: [
+          TextField(
+            controller: _mensaje,
+            decoration: const InputDecoration(labelText: 'Mensaje'),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton.icon(
-            onPressed: _seleccionados.isEmpty || _mensaje.text.trim().isEmpty
-                ? null
-                : () => Navigator.pop(
-                      context,
-                      _CommitSeleccion(
-                        _seleccionados.toList(growable: false),
-                        _mensaje.text.trim(),
-                      ),
-                    ),
-            icon: const Icon(Icons.commit, size: 16),
-            label: const Text('Commit'),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView(
+              children: [
+                for (final archivo in widget.archivos)
+                  CheckboxListTile(
+                    value: _seleccionados.contains(archivo),
+                    title: Mono(archivo),
+                    onChanged: (value) => setState(() {
+                      if (value == true) {
+                        _seleccionados.add(archivo);
+                      } else {
+                        _seleccionados.remove(archivo);
+                      }
+                    }),
+                  ),
+              ],
+            ),
           ),
         ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton.icon(
+        onPressed: _seleccionados.isEmpty || _mensaje.text.trim().isEmpty
+            ? null
+            : () => Navigator.pop(
+                context,
+                _CommitSeleccion(
+                  _seleccionados.toList(growable: false),
+                  _mensaje.text.trim(),
+                ),
+              ),
+        icon: const Icon(Icons.commit, size: 16),
+        label: const Text('Commit'),
+      ),
+    ],
+  );
 }

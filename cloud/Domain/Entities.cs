@@ -97,6 +97,7 @@ public sealed class CloudTask
     public Project? Project { get; set; }
     public required string ExternalId { get; set; }
     public required string Title { get; set; }
+    public string Instructions { get; set; } = "";
     public required string OwnerAgent { get; set; }
     public required string Status { get; set; }
     public required string Branch { get; set; }
